@@ -1,0 +1,114 @@
+Module 1: The "RAG Gym" (Data & Evaluation)
+Goal: Build the testing harness that makes your later work scientific rather than intuitive.
+
+Theory:
+
+Data Engineering: ETL pipelines, Cleaning strategies (removing HTML tags, boilerplate), and the impact of "Garbage In, Garbage Out."
+Evaluation Metrics: Faithfulness (Did the LLM lie?), Answer Relevance, Context Recall (Did we find the right doc?), and Context Precision (Did we filter out noise?).
+Golden Datasets: How to synthetically generate QA pairs from your docs to create a "Ground Truth."
+Tech Stack:
+
+Data: Unstructured.io or LlamaParse (for complex PDFs/Tables).
+Eval: RAGAS or DeepEval (The industry standard for RAG unit testing).
+Vector DB: Qdrant or Weaviate (Dockerized locally).
+The Lab (Project):
+
+Ingest your "Large Data" (e.g., 20k+ chunks).
+Create a "Golden Dataset" of 100 questions + ideal answers using GPT-4.
+Build a dashboard that takes a RAG pipeline as input and spits out a "RAG Score" (0-100).
+Deliverable: A benchmark.py script you will run at the end of every future module.
+
+Module 2: The Baseline (Naive RAG)
+Goal: Understand the limitations of vector search.
+
+Theory:
+
+Dense Embeddings: How transformers turn text into numbers.
+ANN Algorithms: HNSW (Hierarchical Navigable Small World) vs. IVF (Inverted File Index).
+Distance Metrics: Cosine Similarity vs. Euclidean Distance.
+Tech Stack: LangChain (Basic Chains), OpenAI Embeddings (text-embedding-3-small).
+The Lab (Project):
+
+Implement standard chunking (Fixed Size: 512 tokens, 50 overlap).
+Build the pipeline: Query $\rightarrow$ Embed $\rightarrow$ Search $\rightarrow$ Synthesize.
+Pass/Fail Criteria: Run benchmark.py. Note the "Hallucination Rate" when the answer requires combining two chunks.
+
+Module 3: Advanced Retrieval (The "Production" Standard)
+Goal: Fix the "Lost in the Middle" problem and keyword misses.
+
+Theory:
+
+Sparse vs. Dense: Why Vector search fails at finding "Part #90210" (needs Keyword search) but excels at "What is the policy?" (needs Semantic search).
+Hybrid Search: Combining BM25 (Keyword) + Vectors using Reciprocal Rank Fusion (RRF).
+Reranking: The "Two-Stage" architecture. Retrieve 50 docs (fast/inaccurate), then sort top 5 with a Cross-Encoder (slow/accurate).
+Contextual Retrieval: (Anthropic's Method) Pre-pending document titles/summaries to every chunk to fix context loss.
+Tech Stack:
+
+Hybrid: BM25Retriever + ChromaDB.
+Reranker: Cohere Rerank or bge-reranker-v2-m3 (Open Source).
+The Lab (Project):
+
+Upgrade your pipeline to use Hybrid Search + Reranking.
+Experiment: Compare Recall@10 of Naive RAG vs. Hybrid RAG.
+
+Module 4: Modular & Routing RAG (Smart Orchestration)
+Goal: Stop treating all queries the same.
+
+Theory:
+
+Query Classification: Using a small LLM to decide what tool to use.
+Query Transformation:
+
+HyDE (Hypothetical Document Embeddings): Generating a fake answer to search for, rather than the raw question.
+Query Decomposition: Breaking "Compare revenue of 2023 vs 2024" into "Get revenue 2023" and "Get revenue 2024".
+Metadata Filtering: "Self-Querying" where the LLM writes a SQL/NoSQL filter (e.g., WHERE date > '2023-01-01') before searching vectors.
+Tech Stack: LangGraph (for routing logic) or LlamaIndex RouterQueryEngine.
+The Lab (Project):
+
+Build a Router that detects if the user is asking for:
+
+A specific fact (Vector Search).
+A summary (Map-Reduce over all docs).
+A comparison (Decomposition).
+
+Module 5: GraphRAG (Structured Knowledge)
+Goal: Handle multi-hop reasoning and "global" questions.
+
+Theory:
+
+Knowledge Graphs: Nodes (Entities) and Edges (Relationships).
+Graph Extraction: Using LLMs to read text and output triples (Subject -> Predicate -> Object).
+Graph Traversal: "Walking" the graph to connect distant concepts that are vectorially far apart.
+Tech Stack: Neo4j (Database), LangChain GraphCypherQAChain.
+The Lab (Project):
+
+Implement Microsoft's GraphRAG approach.
+Ingest your data into a Graph.
+Query: Ask "How does [Person A]'s decision affect [Department B]?" (A question requiring a 'hop' through a policy document).
+
+Module 6: Agentic RAG & "The Council" (Capstone)
+Goal: Build a system that "thinks" before it answers. This is the LLM Council architecture.
+
+Theory:
+
+ReAct Pattern: Reason $\rightarrow$ Act $\rightarrow$ Observe.
+Tool Use: Giving the LLM access to Web Search (Tavily/Google) and Calculators.
+Reflection: An agent that critiques its own search results ("This isn't relevant, I need to search again").
+The "Council" Architecture:
+
+The Researcher Agent: Has access to Vector DB + Web Search. It gathers raw info.
+The Critic Agent (The "Lawyer"): Reads the Researcher's findings. It checks for hallucinations or missing nuance (inspired by your intern experience). If unsatisfied, it kicks it back to the Researcher.
+The Writer Agent: Synthesizes the final report only when the Critic approves.
+Tech Stack: LangGraph (Essential for multi-agent loops) or CrewAI.
+The Lab (Project):
+
+Build the Council.
+Test: Give it a vague, impossible query like "Analyze the impact of last week's new AI regulations on our specific dataset." Watch it loop, search the web for regulations, search the vector DB for the dataset, and refine its answer.
+
+Career-Ready Add-Ons (The "Polish")
+To make this resume-ready, you must add:
+
+Citations: Every sentence in the final answer must cite the source document ID.
+Latency Optimization: Use Asyncio to run parallel searches.
+Deployment: Wrap the final Agent in a FastAPI endpoint and containerize it with Docker.
+ 

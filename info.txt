@@ -1,0 +1,77 @@
+project_name: RAG Portfolio Builder
+purpose: Build and evaluate a Retrieval-Augmented Generation (RAG) system using SQuAD v2.0 and Wikipedia.
+
+# 1. Data Source & Preparation
+- Primary Dataset: SQuAD v2.0 (Stanford Question Answering Dataset), utilizing both Train and Validation splits.
+- Knowledge Base: 
+  - Wikipedia articles corresponding to the titles found in the SQuAD dataset are fetched using the `wikipedia-api`.
+  - Augmentation Process: The system ensures robustness by checking if the specific "ground truth contexts" from SQuAD are present in the fetched Wikipedia text. If missing, these contexts are injected into the knowledge base to guarantee answerability ("Knowledge Base Augmentation").
+- Storage: Raw and augmented knowledge bases are stored as JSON files (`data/raw/knowledge_base_augmented.json`).
+- Evaluation Set: A "Master Eval Set" is derived from SQuAD, filtering for questions where the article exists in the downloaded knowledge base (`data/raw/squad_eval_set_all.json`). It preserves the `is_impossible` flag from SQuAD 2.0 to test negative rejection.
+
+# 2. Code Methodology for RAG
+
+## A. Ingestion & Indexing (`02_embed_vector.ipynb`)
+- Text Splitting: 
+  - Library: `langchain_text_splitters.RecursiveCharacterTextSplitter`
+  - Chunk Size: 1500 characters
+  - Overlap: 250 characters
+  - Separators: Standard hierarchy (`\n\n`, `\n`, `. `, ` `, empty string).
+- Embedding Model:
+  - Model: `BAAI/bge-small-en-v1.5` (via `sentence-transformers`)
+  - Dimensions: 384
+  - Normalization: True (Required for Dot Product to emulate Cosine Similarity).
+- Vector Database:
+  - Engine: FAISS (Facebook AI Similarity Search)
+  - Index Type: `IndexFlatIP` (Inner Product).
+  - Persistence: Index saved to `models/faiss_index.bin`, metadata to `models/chunk_metadata.pkl`.
+- Evaluation Framework:
+    - LLM Judge: "openai/gpt-oss-120b" - 200k TPD
+    - Base Generator: "llama-3.3-70b-versatile" - 100k TPD
+    
+## B. Retrieval & Generation (`03_trad_rag.ipynb`)
+- Retrieval:
+  - Encodes user query using the same `BAAI/bge-small-en-v1.5` model.
+  - Adds specific instruction prefix for queries: `"Represent this sentence for searching relevant passages: "`.
+  - Retrieves top k=3 chunks based on similarity score.
+- Generation:
+  - LLM Provider: Groq API.
+  - Models Evaluated: `openai/gpt-oss-120b` (primary experiment), `llama-3.3-70b-versatile`.
+  - Prompting: "Strict Scholar" persona. The system prompt explicitly forbids using outside knowledge and requires answering ONLY from the provided context.
+  - Negative Rejection: The model is instructed to say "I cannot answer this based on the provided documents" if information is missing.
+  - Parameters: Temperature = 0.1 (low randomness).
+
+# 3. Evaluation Framework (`rag_evaluation.py`)
+The project includes a custom evaluation engine class `RAGEvaluator` that computes both deterministic and model-based metrics.
+
+## A. Deterministic Metrics (Math-based)
+- Retrieval Hit Rate: Boolean check if the ground truth document title appears in the retrieved chunks.
+- Context Similarity: Jaccard similarity between retrieved tokens and ground truth context tokens.
+- Exact Match (EM): 1 if normalized prediction string exactly matches ground truth answer.
+- F1 Score: Token overlap score between prediction and ground truth.
+
+## B. LLM Judge Metrics (The "Pro Judge")
+Uses a large model (e.g., Llama-3 70B via Groq) to evaluate qualitative aspects.
+1. Faithfulness: Are claims in the answer supported by the retrieved context? (Focus on hallucination detection).
+2. Relevance: Does the answer directly address the user's question?
+3. Context Utility: Did the retrieved chunks actually contain the answer?
+4. Negative Rejection: Did the model correctly refuse to answer an impossible question (SQuAD 2.0 unanswerable checks)?
+5. Coherence: Grammar, style, and formatting check.
+6. Answer Similarity: Semantic equivalence check between generated answer and ground truth (e.g., "100m" == "100 meters").
+
+# 4. Key Files
+- `rag_evaluation.py`: Core evaluation logic and `LLMJudge` class.
+- `01_data_extract.ipynb`: Data pipeline (SQuAD download, Wiki fetch, Augmentation).
+- `02_embed_vector.ipynb`: Chunking, Embedding, and FAISS indexing.
+- `03_trad_rag.ipynb`: RAG pipeline implementation and experiment runner.
+
+# 5. Results
+Due to api call limits, the results for every rag is taken over two days with 20 samples run each day. 
+Evaluation 1 is done using the entire dataset without the impossible questions and on the next day the evaluation is done using the impossible questions.
+In total for every rag 40 samples are run.
+The results are stored in the `data/results` directory. 
+
+1. Naive RAG: Since this was the first RAG system, 3 experiments were run with different parameters. 
+1.1 eval_Portfolio_Benchmark_naive_rag_20251218_131445.csv - contains 50 sample run (without impossible questions) which has the generated answers for all 50 samples but 
+judge eval was only possible for first 21 samples.
+1.2 eval_Portfolio_Benchmark_naive_rag_20251219_092224.csv - contains 21 sample run (with impossible questions) which has the generated answers and judge eval for all 21 samples.

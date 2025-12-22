@@ -1,0 +1,26 @@
+# Data Manipulation & Logging
+pandas
+tqdm
+ipywidgets
+
+# Data Sources
+wikipedia-api
+datasets
+
+# RAG Framework & Orchestration
+langchain
+langchain-community
+langchain-core
+langchain-text-splitters
+faiss-cpu
+groq
+
+# Vector Database & Embeddings
+chromadb
+sentence-transformers
+rank_bm25
+
+# Notebook Support (for VS Code/Jupyter)
+ipykernel
+notebook
+matplotlib
