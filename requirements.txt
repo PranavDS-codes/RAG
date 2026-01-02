@@ -25,3 +25,9 @@ rank_bm25
 ipykernel
 notebook
 matplotlib
+
+# Web Search
+tavily-python
+
+# Additional Utilities
+rapidfuzz
