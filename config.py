@@ -4,12 +4,26 @@ import os
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")
 
-# --- MODEL CONFIG ---
-# This is the standard high-performance model on Groq
-QUERY_MODEL = "llama-3.3-70b-versatile" 
-# QUERY_MODEL = "openai/gpt-oss-120b" 
-SCOUT_MODEL = "llama-3.3-70b-versatile"
-# SCOUT_MODEL = "openai/gpt-oss-120b" 
+# --- MODEL CONFIGURATION ---
+# 1. RETRIEVAL (Query Decomposer)
+# Needs to be instruction-following and structured JSON capable.
+# QUERY_MODEL = "llama-3.3-70b-versatile" 
+QUERY_MODEL = "openai/gpt-oss-120b"
+
+# 2. AUDIT (The Fact Checker)
+# Needs to be logical and strict.
+# AUDIT_MODEL = "llama-3.3-70b-versatile" 
+AUDIT_MODEL = "openai/gpt-oss-120b"
+
+# 3. SCOUT (The Web Researcher)
+# Used by Tavily/Curator for summarization.
+# SCOUT_MODEL = "llama-3.3-70b-versatile"
+SCOUT_MODEL = "openai/gpt-oss-120b" 
+
+# 4. SYNTHESIS (The Writer)
+# Needs to be creative, professional, and good at citations.
+# SYNTHESIZE_MODEL = "llama-3.3-70b-versatile"
+SYNTHESIZE_MODEL = "openai/gpt-oss-120b"
 
 # --- PATHS ---
 # CRITICAL: Point to the CLEAN graph from your surgery
@@ -22,6 +36,8 @@ PENDING_KNOWLEDGE_PATH = "./models/pending_knowledge.json"
 
 # --- SETTINGS ---
 SUPER_NODE_THRESHOLD = 50
+LOG_FILE_PATH = "./models/brain_activity.log"
+REPORTS_DIR = "./models/run_reports"  # <--- NEW: Folder for detailed JSON reports
 
 # --- FILTERS ---
 # STOP_RELATIONS = {

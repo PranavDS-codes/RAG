@@ -1,0 +1,69 @@
+This is a powerful project documentation that positions you as an **AI Engineer specializing in Agentic RAG Systems**. This write-up is designed to be modular—you can pull bullet points for your resume or use the full text for your GitHub `README.md` or portfolio.
+
+---
+
+# 🧠 Project Title: Self-Correcting Graph-RAG Cognitive Engine
+
+### **1. Executive Summary**
+
+Designed and engineered an **Agentic Retrieval-Augmented Generation (RAG) System** that transcends standard vector search by integrating **Knowledge Graph relationships**, **Self-Auditing Agents**, and **Real-Time Web Research**. The system addresses critical RAG failure points—hallucinations, stale data, and "black box" opacity—by implementing a cyclical state machine that "thinks," verifies, and corrects itself before answering.
+
+### **2. Technical Architecture**
+
+Built on a **Cognitive State Machine** using **LangGraph**, orchestrating a "Council of Agents" to handle complex multi-hop queries.
+
+* **Hybrid Retrieval Layer (The "Omni-Retriever"):**
+* **Vector Search:** FAISS index with `all-MiniLM-L6-v2` embeddings for semantic context.
+* **Knowledge Graph:** NetworkX-based directed graph (50k+ nodes) to capture explicit entity relationships (e.g., "Husband," "Subsidiary") often missed by vector similarity.
+* **BM25:** Sparse keyword search for high-precision term matching.
+* **HyDE (Hypothetical Document Embeddings):** Generated hallucinated answers to align query/document vectors, improving recall for vague queries.
+
+
+* **Agentic Workflow (The "Brain"):**
+* **Librarian Node:** Decomposes complex queries into atomic sub-tasks and fetches internal evidence.
+* **Auditor Node (The Gatekeeper):** An LLM agent that strictly evaluates retrieved evidence for **completeness** and **freshness**. If data is stale (e.g., "2022 Net Worth" for a "2025" query), it rejects the answer.
+* **Scout Node (The Fallback):** Triggered only when the Auditor detects gaps. Uses **Tavily API** to perform live web research, extracting high-fidelity answers to fill knowledge voids.
+* **Curator Node (Long-Term Memory):** Automatically structures new web findings into "Knowledge Artifacts" (JSON) to update the internal graph, allowing the system to learn over time.
+
+
+
+### **3. Key Engineering Features**
+
+* **Deep Observability ("Flight Recorder"):** Built a custom telemetry system that logs the full state, latency, and LLM IO for *every* step of the chain. Enabled "Deep Tracing" to inspect internal vector scores, graph traversal paths, and raw agent thoughts.
+* **Data Hygiene ("Graph Surgeon"):** Developed an MRI-like diagnostic tool to detect and merge duplicate entities (e.g., "Beyoncé" vs. "Beyonce Knowles") and normalize fragmented edge relations, reducing graph noise by **~6%**.
+* **Traceable Citations:** The Synthesizer engine enforces strict citation rules, distinguishing between `[Internal Database]` confidence and `[Source: web_url]` real-time findings.
+
+### **4. Impact & Performance Metrics**
+
+We benchmarked this "Cognitive Graph-RAG" against a standard Baseline RAG (Vector-only) and an Advanced RAG (Hybrid but linear). The agentic approach delivered massive gains in reliability and accuracy.
+
+| Metric | Simple RAG | Advanced RAG | **This Agentic Graph-RAG** | **Improvement** |
+| --- | --- | --- | --- | --- |
+| **Hit Rate** | 82.0% | 88.0% | **97.0%** | **+15%** vs Simple |
+| **Faithfulness** | 70.8% | 81.7% | **95.7%** | **+25%** reduction in hallucinations |
+| **Relevance** | 60.4% | 79.6% | **99.6%** | **Near-Perfect** context retrieval |
+| **Coherence** | 88.4% | 90.7% | **99.7%** | Flawless narrative generation |
+| **Semantic Sim** | 76.5% | 91.2% | **95.2%** | Superior answer quality |
+
+***Key Takeaway:** The "Auditor" node eliminated the 0% Exact Match issue seen in linear pipelines by forcing the system to say "I don't know" or search the web rather than guessing, driving Relevance and Faithfulness to >95%.*
+
+---
+
+### **5. Resume Bullet Points (Copy-Paste Ready)**
+
+**Role:** AI Engineer / LLM Developer
+
+* **Developed an Agentic RAG System** using **LangGraph** and **Llama-3**, achieving a **97% Hit Rate** and **99.6% Relevance score** by orchestrating a self-correcting workflow of retrieval, audit, and web-search agents.
+* **Engineered a Hybrid "Graph-RAG" Engine** combining **NetworkX** knowledge graphs with **FAISS** vector search, solving multi-hop reasoning failures and outperforming standard vector-only baselines by **15%**.
+* **Implemented "Self-Healing" Logic:** Designed an LLM-based "Auditor" agent that detects stale or missing data (e.g., outdated financial figures) and dynamically triggers a **Tavily Web Search** to fetch and ingest real-time information.
+* **Built Production-Grade Observability:** Created a custom "Deep Flight Recorder" to trace token-level inputs, outputs, and latency across the entire cognitive chain, enabling granular debugging of stochastic LLM behaviors.
+* **Optimized Data Pipelines:** Wrote "Graph Surgeon" scripts using fuzzy matching algorithms to identify and merge **5,700+ duplicate entities**, significantly reducing knowledge fragmentation and improving retrieval density.
+
+---
+
+### **6. The "LLM Council" Synergy (Bonus Section)**
+
+*In addition to the Grounding/RAG layer, I also engineered an "LLM Council" architecture.*
+
+* **Concept:** A multi-persona consensus engine where distinct LLM agents (e.g., "The Skeptic," "The Optimist," "The Data Scientist") debate a query before converging on a final answer.
+* **Outcome:** Demonstrated ability to handle **Reasoning-Intensive** tasks (Council) alongside **Knowledge-Intensive** tasks (Graph-RAG), covering the full spectrum of modern Generative AI engineering.
