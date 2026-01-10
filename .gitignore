@@ -14,4 +14,7 @@ data/
 .venv
 
 # Ignore Jupyter Checkpoints
-
+interview_questions.md
+ui.txt
+ui2.txt
+ui3.txt
