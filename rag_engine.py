@@ -18,6 +18,9 @@ from config import (
 # ==========================================
 # ROBUST QUERY OPTIMIZER (AUTO-FIXING)
 # ==========================================
+# ==========================================
+# CELL 2: ROBUST QUERY OPTIMIZER (UPDATED)
+# ==========================================
 class QueryOptimizer:
     def __init__(self, model_name="llama-3.3-70b-versatile", api_key=None):
         self.llm = ChatGroq(
@@ -34,19 +37,16 @@ class QueryOptimizer:
 
     def _normalize_response(self, raw_json: Dict) -> Dict:
         """
-        ADAPTER: Converts 'Flat' LLM responses into 'Task-Based' structure.
+        ADAPTER: Now expects the 'tasks' list directly from the LLM.
         """
-        # Case 1: The LLM followed instructions and gave us "tasks"
-        if "tasks" in raw_json and isinstance(raw_json["tasks"], list) and raw_json["tasks"]:
+        # Case 1: Ideal Scenario - LLM gave us the list of task objects
+        if "tasks" in raw_json and isinstance(raw_json["tasks"], list):
             return raw_json
 
-        # Case 2: The LLM gave us "sub_queries" (The Flat Format)
-        # We manually construct tasks by distributing the global metadata
-        if "sub_queries" in raw_json and isinstance(raw_json["sub_queries"], list):
-            print("⚠️ Note: LLM returned flat format. Converting to Atomic Tasks...")
-            
+        # Case 2: Legacy/Fallback - If LLM still outputs flat format, we adapt it
+        if "sub_queries" in raw_json:
+            print("⚠️ LLM reverted to flat format. Distributing global metadata...")
             generated_tasks = []
-            # Grab global context to share
             global_hyde = raw_json.get("hyde_passage", "")
             global_entities = raw_json.get("graph_entities", [])
             global_keywords = raw_json.get("keywords", [])
@@ -54,53 +54,96 @@ class QueryOptimizer:
             for sub_q in raw_json["sub_queries"]:
                 generated_tasks.append({
                     "sub_query": sub_q,
-                    "hyde_passage": global_hyde,       # Share the global HyDE
-                    "graph_entities": global_entities, # Share the global Entities
-                    "keywords": global_keywords        # Share the global Keywords
+                    "hyde_passage": global_hyde,
+                    "graph_entities": global_entities,
+                    "keywords": global_keywords
                 })
-            
             return {"tasks": generated_tasks}
 
-        # Case 3: Complete Failure (Return empty to trigger fallback)
         return {"tasks": []}
 
     def optimize(self, query: str) -> Dict[str, Any]:
         """
-        Generates a Multi-Task Omni-Query Object.
+        Generates a Multi-Task Omni-Query Object with ISOLATED metadata per task.
         """
         system_prompt = """
-            You are the Omni-Query Optimization Engine. Your goal is to transform a raw user question into a high-precision retrieval strategy.
+            You are the **Omni-Query Optimization Engine**, a specialized reasoning system designed to transform complex user questions into a structured set of **atomic retrieval tasks**.
+            Your goal is to maximize downstream retrieval accuracy by decomposing the user’s input into independent, self-contained sub-queries, each with its own isolated retrieval strategy.
 
-            Perform the following analysis steps to generate the output JSON:
+            You do NOT answer the user directly. You ONLY produce structured retrieval instructions.
 
-            1. **DECOMPOSITION (Sub-Queries)**:
-            - Break the user's query into atomic, self-contained questions.
-            - Each sub-query must be understandable *without* the original context.
-            - Cover different angles: factual definitions, comparison, relationships, or procedural steps.
+            ────────────────────────────────────────
+            CRITICAL BEHAVIORAL CONSTRAINTS
+            ────────────────────────────────────────
 
-            2. **HyDE (Hypothetical Document Embeddings)**:
-            - Hallucinate a brief, plausible answer passage (3-5 sentences).
-            - Do NOT worry about factual accuracy; focus on writing the *type* of language, vocabulary, and sentence structure a relevant document would contain.
-            - Include likely technical terms and domain-specific jargon.
+            1. **Strict Task Isolation**
+            - Each sub-query must represent exactly ONE atomic information need.
+            - **Coreference Resolution:** You MUST replace pronouns (he, she, it, they) and vague references with specific names or full descriptions.
+                - *Bad:* "What is his net worth?"
+                - *Good:* "What is Elon Musk's net worth?"
+            - Do NOT merge multiple intents into a single task.
 
-            3. **GRAPH ENTITIES (Knowledge Graph)**:
-            - Extract specific proper nouns, technical concepts, or named entities.
-            - Focus on subjects that would likely be "Nodes" in a Knowledge Graph (e.g., people, organizations, algorithms, chemical compounds).
-            - Exclude generic nouns like "pros", "cons", "features".
+            2. **Per-Task Uniqueness (MANDATORY)**
+            For EVERY sub-query, you MUST generate:
+            - A UNIQUE HyDE passage (Specific to that sub-query)
+            - A UNIQUE set of entities (Specific to that sub-query)
+            - A UNIQUE keyword list (Specific to that sub-query)
 
-            4. **KEYWORDS (BM25 Optimization)**:
-            - Extract 3-5 high-entropy keywords or short phrases.
-            - Focus on terms that are unique to this topic (remove stopwords and filler words).
-            - Include synonyms or alternative spellings if relevant.
+            ❌ Never reuse entities, keywords, or HyDE passages across tasks.
 
-            **OUTPUT SCHEMA (Strict JSON):**
+            3. **Retrieval-First Mindset**
+            - Write everything for a search engine, not a human.
+            - Focus on technical terminology, precise nouns, and distinguishing features.
+
+            ────────────────────────────────────────
+            TASK GENERATION PROCESS
+            ────────────────────────────────────────
+
+            Follow these steps EXACTLY for each decomposed task:
+
+            ### Step 1: Decomposition
+            - Analyze the user input.
+            - Break it into distinct factual, conceptual, or comparative questions.
+            - **Self-Correction:** If a sub-query relies on a previous answer, rewrite it to be fully standalone.
+
+            ### Step 2: HyDE Passage (Per-Task)
+            - Generate a **plausible, domain-specific answer fragment** (3-5 sentences).
+            - Focus on the *vocabulary* and *sentence structure* an expert document would use.
+            - **NOTE:** This passage does not need to be factually correct, but it must be linguistically "dense" with relevant terms.
+
+            ### Step 3: Graph Entities (Per-Task)
+            - Extract 2-5 **explicit, concrete entities**.
+            - Focus on: Proper Nouns, Organizations, Algorithms, Metrics, Chemical formulas, Locations.
+            - Exclude: Generic nouns (e.g., "pros", "cons", "features", "system").
+
+            ### Step 4: Keywords (Per-Task)
+            - Generate 3-8 **high-entropy keywords**.
+            - Focus on: Unique identifiers, technical jargon, rare terms.
+            - Exclude: Stopwords (is, the, a), filler words (overview, introduction).
+
+            ────────────────────────────────────────
+            OUTPUT FORMAT (STRICT JSON)
+            ────────────────────────────────────────
+
+            You must output a single JSON object. Do not include markdown formatting (like ```json).
+
             {
-                "sub_queries": ["Atomic Question 1", "Atomic Question 2"],
-                "hyde_passage": "A plausible, dense paragraph containing relevant terminology...",
+            "tasks": [
+                {
+                "sub_query": "Fully resolved, standalone question 1",
+                "hyde_passage": "Dense, plausible answer passage...",
                 "graph_entities": ["Entity1", "Entity2"],
-                "keywords": ["keyword1", "keyword2", "synonym"]
+                "keywords": ["keyword1", "keyword2", "keyword3"]
+                },
+                {
+                "sub_query": "Fully resolved, standalone question 2",
+                "hyde_passage": "Different dense passage...",
+                "graph_entities": ["Entity3", "Entity4"],
+                "keywords": ["keyword4", "keyword5"]
+                }
+            ]
             }
-            """
+        """
         
         try:
             response = self.llm.invoke([
@@ -122,7 +165,6 @@ class QueryOptimizer:
                     "keywords": [self._clean_text(k) for k in task.get("keywords", [])]
                 })
             
-            # 3. Final Check
             if not clean_tasks:
                 raise ValueError("Structure empty after normalization")
                 
@@ -130,7 +172,6 @@ class QueryOptimizer:
             
         except Exception as e:
             print(f"⚠️ Optimization Failed: {e}")
-            # Fallback
             return {
                 "tasks": [{
                     "sub_query": query,
@@ -202,65 +243,93 @@ class OmniRetriever:
     def _retrieve_atomic(self, task, top_k=5, verbose=False):
         """
         Executes search for ONE sub-query and returns its own Top K results.
+        Now leverages the strict, per-task metadata generated by the Optimizer.
         """
         candidates = {} # text -> score
         
-        # 1. VECTOR (HyDE)
-        if task['hyde_passage']:
+        # 1. VECTOR (HyDE) - Now uses the task-specific HyDE passage
+        if task.get('hyde_passage'):
             hyde_emb = self.embedder.encode([task['hyde_passage']], convert_to_numpy=True)
-            D, I = self.index.search(hyde_emb, k=top_k*2)
-            for i, idx in enumerate(I[0]):
+            # Increased candidate pool to 3x to allow ReRanker more choices
+            D, I = self.index.search(hyde_emb, k=top_k*3) 
+            for idx in I[0]:
                 if idx < len(self.chunks):
                     candidates[self.chunks[idx]['text']] = 0.0
 
-        # 2. BM25 (Keywords)
-        bm25_query = f"{task['sub_query']} {' '.join(task['keywords'])}"
+        # 2. BM25 (Keywords) - Now uses task-specific keywords
+        # We combine sub_query + keywords for a rich lexical query
+        bm25_query = f"{task['sub_query']} {' '.join(task.get('keywords', []))}"
         tokenized_query = bm25_query.split()
-        bm25_docs = self.bm25.get_top_n(tokenized_query, self.chunk_texts, n=top_k*2)
+        bm25_docs = self.bm25.get_top_n(tokenized_query, self.chunk_texts, n=top_k*3)
         for txt in bm25_docs:
             candidates[txt] = 0.0
 
-        # 3. GRAPH (Entities)
+        # 3. GRAPH (Entities) - Now uses task-specific entities
         graph_facts = []
-        for entity in task['graph_entities']:
+        for entity in task.get('graph_entities', []):
             # Exact Match
             if entity in self.graph_engine.G:
                 facts = self.graph_engine.get_neighbors(entity)
                 graph_facts.extend(facts)
             else:
-                # Fuzzy Fallback
+                # Fuzzy Fallback (Simple case-insensitive check)
                 for node in self.graph_engine.G.nodes():
                     if str(node).lower() == entity.lower():
                         facts = self.graph_engine.get_neighbors(node)
                         graph_facts.extend(facts)
                         break
-
-        for fact in graph_facts[:15]: 
+        
+        # Add graph facts to candidates
+        for fact in graph_facts[:20]: # Cap graph facts to prevent flooding
             candidates[fact] = 0.0
             
         # 4. RE-RANKING (Per Task)
         unique_docs = list(candidates.keys())
         if not unique_docs: return []
         
+        # Rerank candidates against the specific SUB-QUERY (not the global query)
         pairs = [[task['sub_query'], doc] for doc in unique_docs]
         scores = self.reranker.predict(pairs)
         
+        # Sort and take top K
         final_ranked = sorted(list(zip(unique_docs, scores)), key=lambda x: x[1], reverse=True)
         
         return final_ranked[:top_k]
 
+    def _deduplicate_and_flatten(self, task_results):
+        """
+        Merges results from all tasks into a single unique list, 
+        keeping the highest score for any duplicate document.
+        """
+        unique_map = {} # text -> max_score
+        
+        for task in task_results:
+            for doc, score in task['results']:
+                if doc not in unique_map:
+                    unique_map[doc] = score
+                else:
+                    # Keep the higher score if retrieved by multiple tasks
+                    unique_map[doc] = max(unique_map[doc], score)
+        
+        # Sort globally by score
+        final_list = sorted(unique_map.items(), key=lambda x: x[1], reverse=True)
+        return final_list
+
     def retrieve(self, query, top_k_per_task=5, verbose=True):
         # 1. OPTIMIZE
+        # This triggers the NEW system prompt with strict isolation
         omni = self.optimizer.optimize(query)
         
-        # --- DEBUG CHECK ---
-        # This prevents the KeyError if something goes wrong
         if "tasks" not in omni:
             print("❌ Error: Optimizer returned invalid structure:", omni.keys())
-            return {"original_query": query, "tasks": []}
+            return {"original_query": query, "tasks": [], "combined_context": []}
 
         if verbose:
             print(f"\n🧠 OMNI-QUERY: Generated {len(omni['tasks'])} Atomic Tasks")
+            for t in omni['tasks']:
+                print(f"  - Sub-Query: {t['sub_query']}")
+                print(f"    Keywords: {t['keywords']}")
+                print(f"    Entities: {t['graph_entities']}")
         
         final_structure = {
             "original_query": query,
@@ -281,9 +350,21 @@ class OmniRetriever:
             final_structure["tasks"].append(task_result)
             
             if verbose:
-                print(f"   ↳ Retrieved {len(results)} contexts (Top Score: {results[0][1]:.4f})")
+                # Show top match for this specific atomic query
+                if results:
+                    print(f"   ↳ Retrieved {len(results)} contexts. Top Match: {results[0][1]:.4f}")
+                else:
+                    print(f"   ↳ Retrieved 0 contexts.")
+
+        # 3. GLOBAL MERGE (New Step)
+        # Create a single 'context' list for the final answer generator
+        combined_context = self._deduplicate_and_flatten(final_structure["tasks"])
+        final_structure["combined_context"] = combined_context
+        
+        if verbose:
+            print(f"\n✅ Final Consolidated Contexts: {len(combined_context)} unique items.")
 
         return final_structure
 
-# Initialize example
-# omni_tool = OmniRetriever(GRAPH_PATH, CHUNKS_PATH, VECTOR_INDEX_PATH, BM25_INDEX_PATH, QUERY_MODEL)
+# Initialize
+# omni_tool = OmniRetriever(GRAPH_PATH, CHUNKS_PATH, VECTOR_INDEX_PATH, BM25_INDEX_PATH, MODEL_NAME)
