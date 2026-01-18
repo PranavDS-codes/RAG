@@ -1,14 +1,21 @@
 import os
+from dotenv import load_dotenv
+load_dotenv(override=True)
 
 # --- API KEYS ---
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")
 
 # --- MODEL CONFIGURATION ---
+
+# 1. Premise Model
+PREMISE_MODEL = "llama-3.3-70b-versatile" 
+# PREMISE_MODEL = "openai/gpt-oss-120b"
+
 # 1. RETRIEVAL (Query Decomposer)
 # Needs to be instruction-following and structured JSON capable.
-# QUERY_MODEL = "llama-3.3-70b-versatile" 
-QUERY_MODEL = "openai/gpt-oss-120b"
+QUERY_MODEL = "llama-3.3-70b-versatile" 
+# QUERY_MODEL = "openai/gpt-oss-120b"
 
 # 2. AUDIT (The Fact Checker)
 # Needs to be logical and strict.
@@ -17,8 +24,8 @@ AUDIT_MODEL = "openai/gpt-oss-120b"
 
 # 3. SCOUT (The Web Researcher)
 # Used by Tavily/Curator for summarization.
-# SCOUT_MODEL = "llama-3.3-70b-versatile"
-SCOUT_MODEL = "openai/gpt-oss-120b" 
+SCOUT_MODEL = "llama-3.3-70b-versatile"
+# SCOUT_MODEL = "openai/gpt-oss-120b" 
 
 # 4. SYNTHESIS (The Writer)
 # Needs to be creative, professional, and good at citations.
