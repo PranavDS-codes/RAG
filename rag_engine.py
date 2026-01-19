@@ -6,6 +6,7 @@ from sentence_transformers import SentenceTransformer, CrossEncoder
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 from typing import List, Dict, Any
+from prompts import QUERY_DECOMPOSITION_PROMPT
 
 # IMPORTS FROM CONFIG
 from config import (
@@ -17,9 +18,6 @@ from config import (
 
 # ==========================================
 # ROBUST QUERY OPTIMIZER (AUTO-FIXING)
-# ==========================================
-# ==========================================
-# CELL 2: ROBUST QUERY OPTIMIZER (UPDATED)
 # ==========================================
 class QueryOptimizer:
     def __init__(self, model_name="llama-3.3-70b-versatile", api_key=None):
@@ -66,84 +64,7 @@ class QueryOptimizer:
         """
         Generates a Multi-Task Omni-Query Object with ISOLATED metadata per task.
         """
-        system_prompt = """
-            You are the **Omni-Query Optimization Engine**, a specialized reasoning system designed to transform complex user questions into a structured set of **atomic retrieval tasks**.
-            Your goal is to maximize downstream retrieval accuracy by decomposing the user’s input into independent, self-contained sub-queries, each with its own isolated retrieval strategy.
-
-            You do NOT answer the user directly. You ONLY produce structured retrieval instructions.
-
-            ────────────────────────────────────────
-            CRITICAL BEHAVIORAL CONSTRAINTS
-            ────────────────────────────────────────
-
-            1. **Strict Task Isolation**
-            - Each sub-query must represent exactly ONE atomic information need.
-            - **Coreference Resolution:** You MUST replace pronouns (he, she, it, they) and vague references with specific names or full descriptions.
-                - *Bad:* "What is his net worth?"
-                - *Good:* "What is Elon Musk's net worth?"
-            - Do NOT merge multiple intents into a single task.
-
-            2. **Per-Task Uniqueness (MANDATORY)**
-            For EVERY sub-query, you MUST generate:
-            - A UNIQUE HyDE passage (Specific to that sub-query)
-            - A UNIQUE set of entities (Specific to that sub-query)
-            - A UNIQUE keyword list (Specific to that sub-query)
-
-            ❌ Never reuse entities, keywords, or HyDE passages across tasks.
-
-            3. **Retrieval-First Mindset**
-            - Write everything for a search engine, not a human.
-            - Focus on technical terminology, precise nouns, and distinguishing features.
-
-            ────────────────────────────────────────
-            TASK GENERATION PROCESS
-            ────────────────────────────────────────
-
-            Follow these steps EXACTLY for each decomposed task:
-
-            ### Step 1: Decomposition
-            - Analyze the user input.
-            - Break it into distinct factual, conceptual, or comparative questions.
-            - **Self-Correction:** If a sub-query relies on a previous answer, rewrite it to be fully standalone.
-
-            ### Step 2: HyDE Passage (Per-Task)
-            - Generate a **plausible, domain-specific answer fragment** (3-5 sentences).
-            - Focus on the *vocabulary* and *sentence structure* an expert document would use.
-            - **NOTE:** This passage does not need to be factually correct, but it must be linguistically "dense" with relevant terms.
-
-            ### Step 3: Graph Entities (Per-Task)
-            - Extract 2-5 **explicit, concrete entities**.
-            - Focus on: Proper Nouns, Organizations, Algorithms, Metrics, Chemical formulas, Locations.
-            - Exclude: Generic nouns (e.g., "pros", "cons", "features", "system").
-
-            ### Step 4: Keywords (Per-Task)
-            - Generate 3-8 **high-entropy keywords**.
-            - Focus on: Unique identifiers, technical jargon, rare terms.
-            - Exclude: Stopwords (is, the, a), filler words (overview, introduction).
-
-            ────────────────────────────────────────
-            OUTPUT FORMAT (STRICT JSON)
-            ────────────────────────────────────────
-
-            You must output a single JSON object. Do not include markdown formatting (like ```json).
-
-            {
-            "tasks": [
-                {
-                "sub_query": "Fully resolved, standalone question 1",
-                "hyde_passage": "Dense, plausible answer passage...",
-                "graph_entities": ["Entity1", "Entity2"],
-                "keywords": ["keyword1", "keyword2", "keyword3"]
-                },
-                {
-                "sub_query": "Fully resolved, standalone question 2",
-                "hyde_passage": "Different dense passage...",
-                "graph_entities": ["Entity3", "Entity4"],
-                "keywords": ["keyword4", "keyword5"]
-                }
-            ]
-            }
-        """
+        system_prompt = QUERY_DECOMPOSITION_PROMPT
         
         try:
             response = self.llm.invoke([

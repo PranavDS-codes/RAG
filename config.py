@@ -17,17 +17,27 @@ PREMISE_MODEL = "llama-3.3-70b-versatile"
 QUERY_MODEL = "llama-3.3-70b-versatile" 
 # QUERY_MODEL = "openai/gpt-oss-120b"
 
-# 2. AUDIT (The Fact Checker)
+# 2. AUDIT (Fact Checker)
 # Needs to be logical and strict.
 # AUDIT_MODEL = "llama-3.3-70b-versatile" 
 AUDIT_MODEL = "openai/gpt-oss-120b"
 
-# 3. SCOUT (The Web Researcher)
+# 3. VERIFY (Search Quality)
+# Needs to be logical and strict.
+# VERIFY_MODEL = "llama-3.3-70b-versatile" 
+VERIFY_MODEL = "openai/gpt-oss-120b"
+
+# 4. REFINE (Failed Search -> Search Strategy Refiner)
+# Needs to be logical and strict.
+# REFINE_MODEL = "llama-3.3-70b-versatile" 
+REFINE_MODEL = "openai/gpt-oss-120b"
+
+# 5. SCOUT (Web Researcher)
 # Used by Tavily/Curator for summarization.
 SCOUT_MODEL = "llama-3.3-70b-versatile"
 # SCOUT_MODEL = "openai/gpt-oss-120b" 
 
-# 4. SYNTHESIS (The Writer)
+# 6. SYNTHESIS (Final Answer Writer)
 # Needs to be creative, professional, and good at citations.
 # SYNTHESIZE_MODEL = "llama-3.3-70b-versatile"
 SYNTHESIZE_MODEL = "openai/gpt-oss-120b"

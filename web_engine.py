@@ -6,6 +6,8 @@ from typing import List, Dict, Any
 from tavily import TavilyClient
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
+import wikipedia
+from prompts import KNOWLEDGE_CURATION_PROMPT
 
 # IMPORTS FROM CONFIG
 from config import (
@@ -114,78 +116,86 @@ class DeepWebScout:
 # ==========================================
 # KNOWLEDGE CURATOR (UPDATED)
 # ==========================================
+class WikiScout:
+    def __init__(self, lang="en"):
+        self.lang = lang
+        wikipedia.set_lang(lang)
+
+    def search_and_extract(self, topic: str) -> Dict:
+        print(f"   📖 [WikiScout] Looking up '{topic}'...")
+        try:
+            search_results = wikipedia.search(topic, results=1)
+            if not search_results:
+                return {"status": "error", "reason": "No results found"}
+            
+            best_match = search_results[0]
+            page = wikipedia.page(best_match, auto_suggest=False)
+            
+            return {
+                "status": "success",
+                "topic": topic,
+                "title": page.title,
+                "summary": page.summary,
+                "url": page.url,
+                "answer": page.summary + "...", 
+                "curation_data": [{
+                    "url": page.url,
+                    "full_text": page.content[:5000] 
+                }]
+            }
+        except Exception as e:
+            return {"status": "error", "reason": str(e)}
+
+        
+# ==========================================
+# KNOWLEDGE CURATOR (LLM POWERED)
+# ==========================================
 class KnowledgeCurator:
     def __init__(self, pending_file="./models/pending_knowledge.json", model_name="llama-3.3-70b-versatile"):
         self.pending_file = pending_file
+        os.makedirs(os.path.dirname(self.pending_file), exist_ok=True)
+        
         self.llm = ChatGroq(
             temperature=0, 
             model_name=model_name, 
-            api_key=os.environ.get("GROQ_API_KEY"),
+            api_key=GROQ_API_KEY,
             model_kwargs={"response_format": {"type": "json_object"}}
         )
 
-    def curate(self, query: str, scout_result: Dict):
+    def curate(self, query: str, scout_result: Dict, source_type: str = "web_scout"):
         """
-        Takes the scout result, analyzes the 'curation_data', and saves a knowledge artifact.
+        Curates knowledge into the specific vector/graph schema requested.
         """
-        if scout_result["status"] != "success":
+        if scout_result.get("status") != "success":
             return
 
-        print("   🧠 Curating knowledge from raw content...")
+        print(f"   🧠 Curating ({source_type})...")
         
-        # Prepare a rich context from the top 3 results for the Curator
-        # We combine the raw text from the best sources
-        best_sources = scout_result["curation_data"][:3] 
-        combined_text = "\n\n".join([f"Source ({s['url']}): {s['full_text']}" for s in best_sources])
-        
-        sys_msg = """
-            You are the **Graph RAG Knowledge Architect**.
-            Your goal is to transform raw, noisy web content into a pristine, structured Knowledge Artifact optimized for both vector search and graph traversal.
+        # 1. Prepare Content
+        sources = scout_result.get("curation_data", [])
+        combined_text = ""
+        for s in sources[:3]:
+            text = s.get("full_text") or s.get("raw_content") or s.get("snippet") or ""
+            combined_text += f"\n\nSource ({s.get('url')}):\n{text[:2000]}"
 
-            ### INSTRUCTIONS
-
-            1. **VECTOR CONTENT (The Summary)**:
-            - Synthesize a **dense, information-rich paragraph** that directly answers the User Query based *only* on the Scraped Content.
-            - Remove conversational fluff ("The article states...", "It is important to note...").
-            - Focus on factual density: include dates, numbers, names, and specific technical details.
-            - This text will be embedded; ensure it is semantically complete and self-contained.
-
-            2. **GRAPH TRIPLES (The Knowledge Graph)**:
-            - Extract 5-15 semantic triples: `{"head": "Subject", "relation": "Predicate", "tail": "Object"}`.
-            - **Entity Rules (Head/Tail)**: Use precise Proper Nouns or technical concepts. Keep them atomic (e.g., "Elon Musk" instead of "The CEO of Tesla Elon Musk").
-            - **Relation Rules**: Use active, directed verbs (e.g., "founded", "acquired", "located_in", "author_of"). Avoid generic relations like "is" or "has" if a more specific one exists.
-            - **Canonicalization**: Resolve pronouns and aliases to their full names (e.g., replace "he" with the person's name).
-
-            3. **METADATA**:
-            - `confidence_score`: 0.0 (Irrelevant/Garbage) to 1.0 (Perfect, Factual Match).
-            - `category`: Classify the content into one specific domain tag (e.g., "Market Data", "Technical Documentation", "Biography", "News").
-
-            ### OUTPUT SCHEMA (Strict JSON)
-            {
-                "vector_content": "Dense text summary...",
-                "graph_triples": [
-                    {"head": "Entity A", "relation": "relationship_verb", "tail": "Entity B"},
-                    {"head": "Entity B", "relation": "relationship_verb", "tail": "Entity C"}
-                ],
-                "metadata": {
-                    "confidence_score": 0.85,
-                    "category": "Domain Tag"
-                }
-            }
-            """
+        # 2. Strict Schema Prompt
+        sys_msg = KNOWLEDGE_CURATION_PROMPT
         
         try:
             response = self.llm.invoke([
                 SystemMessage(content=sys_msg),
-                HumanMessage(content=f"QUERY: {query}\n\nCONTENT:\n{combined_text[:6000]}") # Context limit
+                HumanMessage(content=f"TOPIC: {query}\n\nCONTENT:\n{combined_text[:6000]}")
             ])
-            artifact_data = json.loads(response.content)
             
+            curated_data = json.loads(response.content)
+            
+            # 3. Construct Final Artifact matching your example
             final_artifact = {
                 "status": "pending_review",
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "original_query": query,
-                "data": artifact_data
+                "data": curated_data,       # Contains vector_content, graph_triples, etc.
+                "source_type": source_type  # 'wiki_librarian' or 'web_scout'
             }
             
             self._save(final_artifact)
@@ -198,8 +208,11 @@ class KnowledgeCurator:
         data = []
         if os.path.exists(self.pending_file):
             try:
-                with open(self.pending_file, "r") as f: data = json.load(f)
+                with open(self.pending_file, "r") as f: 
+                    content = f.read()
+                    if content: data = json.loads(content)
             except: data = []
+        
         data.append(artifact)
         with open(self.pending_file, "w") as f: json.dump(data, f, indent=2)
 # example usage

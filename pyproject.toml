@@ -25,5 +25,6 @@ dependencies = [
     "sentence-transformers>=5.2.0",
     "tavily-python>=0.7.17",
     "tqdm>=4.67.1",
+    "wikipedia>=1.4.0",
     "wikipedia-api>=0.8.1",
 ]
