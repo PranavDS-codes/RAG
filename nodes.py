@@ -22,107 +22,60 @@ def retrieve_node(state: BrainState):
     duration = (time.perf_counter() - t0) * 1000
     
     evidence = []
-    # We also keep a raw list for the Verifier/Synthesizer if needed
-    raw_context = [] 
     
     for task in results.get("tasks", []):
-        sub_q = task["sub_query"]
         for txt, score in task["results"]:
             formatted = f"[Score: {score:.2f}] {txt}"
             evidence.append(formatted)
-            raw_context.append(formatted)
     
     recorder.log_event("NODE_OUTPUT", "retrieve_node", {"evidence_count": len(evidence)}, duration)
     
-    # Return BOTH the specific key for Audit AND the combined context
+    # CHANGE: We ONLY return 'internal_knowledge'. 
+    # We do NOT touch 'combined_context' yet.
     return {
-        "internal_knowledge": evidence,
-        # We initialize combined_context here so it's not None
-        "combined_context": raw_context 
+        "internal_knowledge": evidence
     }
 
 def audit_node(state: BrainState):
     print("🕵️‍♂️ [AUDITOR] Auditing Evidence & Freshness...")
-    t0 = time.perf_counter()
-    
+    t0 = time.perf_counter() 
     query = state["query"]
-    evidence_text = "\n".join(state["internal_knowledge"][:20]) # Increased context limit
-    
-    sys_msg = AUDIT_NODE_PROMPT
-    user_msg = f"QUERY: {query}\n\nINTERNAL EVIDENCE:\n{evidence_text}"
-    
-    # Init LLM
+    evidence = state.get("internal_knowledge", [])
+    # 1. Run the LLM Audit
+    evidence_text = "\n".join(evidence[:20]) 
+    user_msg = f"QUERY: {query}\n\nINTERNAL EVIDENCE:\n{evidence_text}"    
     audit_llm = ChatGroq(temperature=0, model_name=AUDIT_MODEL, api_key=GROQ_API_KEY)
-    
-    response = audit_llm.invoke([
-        SystemMessage(content=sys_msg),
-        HumanMessage(content=user_msg)
-    ])
-    
-    duration = (time.perf_counter() - t0) * 1000
-    
-    # LOG FULL PROMPT AND RESPONSE
-    recorder.log_event("LLM_AUDIT", "AuditNode", {
-        "full_system_prompt": sys_msg,
-        "full_user_prompt": user_msg,
-        "full_response": response.content
-    }, duration)
-    
     try:
+        response = audit_llm.invoke([
+            SystemMessage(content=AUDIT_NODE_PROMPT),
+            HumanMessage(content=user_msg)
+        ])
         analysis = json.loads(response.content)
-    except:
+    except Exception as e:
+        print(f"   ⚠️ Auditor Error: {e}")
         analysis = {"sufficient": False, "missing_topics": [query]}
-        
-    if analysis.get("sufficient"):
-        print("   ✅ Evidence is sufficient & fresh.")
-    else:
-        print(f"   ❌ Gaps/Stale Data detected: {analysis.get('missing_topics')}")
-
-    return {"gap_analysis": analysis}
-
-
-def synthesize_node(state: BrainState):
-    print("✍️ [SYNTHESIZER] Writing Final Answer...")
-    t0 = time.perf_counter()
-    
-    synth_llm = ChatGroq(temperature=0, model_name=SYNTHESIZE_MODEL, api_key=GROQ_API_KEY)
-    
-    # [FIX 1] Get the unified context bucket
-    context_list = state.get("combined_context", [])
-    
-    # [FIX 2] Format it clearly so the LLM isn't reading a messy raw list
-    # This handles cases where context might be mixed types
-    formatted_context = ""
-    for i, item in enumerate(context_list):
-        formatted_context += f"--- Source {i+1} ---\n{str(item)}\n\n"
-        
-    if not formatted_context:
-        formatted_context = "No relevant context found in Internal or External sources."
-
-    sys_msg = SYNTHESIZE_NODE_PROMPT
-    
-    # [FIX 3] Update the user message to use the new formatted context
-    user_msg = f"""
-    QUESTION: {state['query']}
-    
-    ALL GATHERED INTELLIGENCE:
-    {formatted_context}
-    """
-    
-    response = synth_llm.invoke([
-        SystemMessage(content=sys_msg),
-        HumanMessage(content=user_msg)
-    ])
-    
     duration = (time.perf_counter() - t0) * 1000
-    
-    recorder.log_event("LLM_SYNTHESIS", "SynthesizeNode", {
-        "full_system_prompt": sys_msg,
-        "full_user_prompt": user_msg,
-        "full_response": response.content
-    }, duration)
-    
-    return {"final_answer": response.content}
+    recorder.log_event("LLM_AUDIT", "AuditNode", analysis, duration)
+    # 2. THE NEW LOGIC: CONDITIONAL CONTEXT MERGE
+    state_updates = {"gap_analysis": analysis}
+    if analysis.get("sufficient"):
+        print("   ✅ Evidence is sufficient. Promoting ALL to Context.")
+        # [CASE A: APPROVED]
+        # 1. Keep internal_knowledge as is (no change needed).
+        # 2. Add EVERYTHING to the combined_context stream.
+        state_updates["combined_context"] = evidence
+    else:
+        print(f"   ❌ Gaps detected: {analysis.get('missing_topics')}")
+        if evidence:
+            print(f"   ✂️ Pruning Internal Knowledge (Keeping top 1 of {len(evidence)})...")
+            # [CASE B: REJECTED]
+            # 1. Slice to top 1
+            pruned_evidence = evidence[:1]
+            # 2. Overwrite 'internal_knowledge' in state so future nodes see the clean version
+            state_updates["internal_knowledge"] = pruned_evidence
+            # 3. Add ONLY the top 1 to 'combined_context'
+            state_updates["combined_context"] = pruned_evidence
+    return state_updates
 
 def verify_node(state: BrainState):
     print("🧐 [VERIFIER] Inspecting evidence quality...")
@@ -258,6 +211,7 @@ def refine_node(state: BrainState):
 
 def wiki_search_node(state: BrainState):
     gap_data = state.get("gap_analysis", {})
+    # Fallback to 'missing_topics' if 'wiki_topics' is empty
     topics = gap_data.get("wiki_topics") or gap_data.get("missing_topics", [])
     
     print(f"📚 [WIKI SCOUT] Consulting Encyclopedia for {len(topics)} topics...")
@@ -269,7 +223,7 @@ def wiki_search_node(state: BrainState):
             res = traced_wiki.search_and_extract(topic)
             if res["status"] == "success":
                 # Wikipedia results usually have 'summary' as the main content
-                summary = res.get('summary', '')[:500] 
+                summary = res.get('summary', '') 
                 url = res.get('url', 'Wiki')
                 
                 fact_block = (
@@ -305,23 +259,25 @@ def web_search_node(state: BrainState):
             res = traced_scout.search_and_extract(topic)
             if res["status"] == "success":
                 # 1. Capture the AI Summary (The "Claim")
-                summary = res.get('tavily_answer', 'No summary provided.')
+                ai_summary = res.get('tavily_answer', 'No summary provided.')
                 
                 # 2. Capture the Raw Evidence (The "Proof")
-                # Extract top 2 snippets to ground the Verifier
+                # Extract top 5 snippets to ground the Verifier
                 evidence_snippets = ""
                 sources = res.get('curation_data', []) or res.get('results', [])
-                for i, source in enumerate(sources[:2]): # Top 2 sources
+                for i, source in enumerate(sources[:5]): # Top 5 sources
                     content = source.get('snippet') or source.get('content') or source.get('raw_content') or ""
-                    # Truncate content to avoid blowing up context window
-                    evidence_snippets += f"   - [Source {i+1}]: {content[:400]}...\n"
+                    url = source.get('url', 'Unknown')
+                    # We format this so the Verifier can cross-check dates/facts
+                    clean_content = content[:500].replace("\n", " ")
+                    evidence_snippets += f"   - [Source {i+1}]: ({url}) {clean_content}\n"
 
                 # 3. Format the Fact Block
                 # We clearly separate Claim vs Evidence
                 fact_block = (
-                    f"### SEARCH TOPIC: {topic}\n"
-                    f"**AI Summary:** {summary}\n"
-                    f"**Raw Evidence Snippets:**\n{evidence_snippets}"
+                    f"### WEB SEARCH: {topic}\n"
+                    # f"**AI Generated Summary:** {ai_summary}\n"
+                    f"**Raw Evidence Snippets (TRUST THESE):**\n{evidence_snippets}"
                 )
                 
                 web_facts.append(fact_block)
@@ -338,3 +294,46 @@ def web_search_node(state: BrainState):
         "web_knowledge": web_facts,
         "combined_context": web_facts 
     }
+
+def synthesize_node(state: BrainState):
+    print("✍️ [SYNTHESIZER] Writing Final Answer...")
+    t0 = time.perf_counter()
+    
+    synth_llm = ChatGroq(temperature=0, model_name=SYNTHESIZE_MODEL, api_key=GROQ_API_KEY)
+    
+    # [FIX 1] Get the unified context bucket
+    context_list = state.get("combined_context", [])
+    
+    # [FIX 2] Format it clearly so the LLM isn't reading a messy raw list
+    # This handles cases where context might be mixed types
+    formatted_context = ""
+    for i, item in enumerate(context_list):
+        formatted_context += f"--- Source {i+1} ---\n{str(item)}\n\n"
+        
+    if not formatted_context:
+        formatted_context = "No relevant context found in Internal or External sources."
+
+    sys_msg = SYNTHESIZE_NODE_PROMPT
+    
+    # [FIX 3] Update the user message to use the new formatted context
+    user_msg = f"""
+    QUESTION: {state['query']}
+    
+    ALL GATHERED INTELLIGENCE:
+    {formatted_context}
+    """
+    
+    response = synth_llm.invoke([
+        SystemMessage(content=sys_msg),
+        HumanMessage(content=user_msg)
+    ])
+    
+    duration = (time.perf_counter() - t0) * 1000
+    
+    recorder.log_event("LLM_SYNTHESIS", "SynthesizeNode", {
+        "full_system_prompt": sys_msg,
+        "full_user_prompt": user_msg,
+        "full_response": response.content
+    }, duration)
+    
+    return {"final_answer": response.content}

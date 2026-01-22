@@ -174,7 +174,7 @@ class KnowledgeCurator:
         # 1. Prepare Content
         sources = scout_result.get("curation_data", [])
         combined_text = ""
-        for s in sources[:3]:
+        for s in sources[:5]:
             text = s.get("full_text") or s.get("raw_content") or s.get("snippet") or ""
             combined_text += f"\n\nSource ({s.get('url')}):\n{text[:2000]}"
 

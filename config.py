@@ -24,13 +24,13 @@ AUDIT_MODEL = "openai/gpt-oss-120b"
 
 # 3. VERIFY (Search Quality)
 # Needs to be logical and strict.
-# VERIFY_MODEL = "llama-3.3-70b-versatile" 
-VERIFY_MODEL = "openai/gpt-oss-120b"
+VERIFY_MODEL = "llama-3.3-70b-versatile" 
+# VERIFY_MODEL = "openai/gpt-oss-120b"
 
 # 4. REFINE (Failed Search -> Search Strategy Refiner)
 # Needs to be logical and strict.
-# REFINE_MODEL = "llama-3.3-70b-versatile" 
-REFINE_MODEL = "openai/gpt-oss-120b"
+REFINE_MODEL = "llama-3.3-70b-versatile" 
+# REFINE_MODEL = "openai/gpt-oss-120b"
 
 # 5. SCOUT (Web Researcher)
 # Used by Tavily/Curator for summarization.
@@ -77,7 +77,7 @@ SEARCH_CONFIG = {
     "search_depth": "advanced",      # Deep search for quality
     "topic": "general",              # General knowledge
     "max_results": 5,                # Top 5 sources
-    "include_answer": True,          # Get the AI-generated summary
+    "include_answer": False,          # Get the AI-generated summary
     "include_raw_content": True,     # Get full page text
     "include_images": False,
     "chunks_per_source": 3
