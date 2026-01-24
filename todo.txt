@@ -1,0 +1,2 @@
+main.py for terminal based RAG
+code suit to add pending knowledge to the knowledge base
