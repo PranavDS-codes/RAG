@@ -10,8 +10,8 @@ data/
 .env
 .ipynb_checkpoints/
 Diagrams/
-final_results/
-judged/
+Final_results/
+Judged/
 ui/
 Notebooks/
 # Virtual environments
