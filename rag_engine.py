@@ -156,7 +156,7 @@ class OmniRetriever:
         with open(bm25_path, "rb") as f:
             self.bm25 = pickle.load(f)
             
-        self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
+        self.embedder = SentenceTransformer('BAAI/bge-small-en-v1.5')
         self.index = faiss.read_index(vector_path)
         self.reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
         print("🚀 Omni-Retriever Ready.")

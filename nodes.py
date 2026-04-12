@@ -171,14 +171,21 @@ def refine_node(state: BrainState):
     FAILURE REASON: {failure_reason}
     """
     
-    refiner_llm = ChatGroq(temperature=0.4, model_name=REFINE_MODEL, api_key=GROQ_API_KEY)
+    refiner_llm = ChatGroq(
+        temperature=0.4, 
+        model_name=REFINE_MODEL, 
+        api_key=GROQ_API_KEY,
+        model_kwargs={"response_format": {"type": "json_object"}}
+    )
     
     try:
         response = refiner_llm.invoke([
             SystemMessage(content=sys_msg),
             HumanMessage(content=user_msg)
         ])
-        new_strategy = json.loads(response.content)
+        # Clean up markdown code blocks if present
+        clean_content = response.content.replace("```json", "").replace("```", "").strip()
+        new_strategy = json.loads(clean_content)
     except Exception as e:
         print(f"   ⚠️ Refiner Error: {e}")
         # Fallback: Just switch sources and reuse the original query

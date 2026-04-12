@@ -1,5 +1,5 @@
 import time
-from config import GRAPH_PATH, CHUNKS_PATH, VECTOR_INDEX_PATH, BM25_INDEX_PATH, QUERY_MODEL
+from config import GRAPH_PATH, CHUNKS_PATH, VECTOR_INDEX_PATH, BM25_INDEX_PATH, QUERY_MODEL, CURATOR_MODEL
 from tracing import DeepFlightRecorder
 
 # Import your original engines (assuming these files are in your root or python path)
@@ -144,5 +144,5 @@ traced_retriever = TracedOmniRetriever(
 )
 traced_scout = TracedWebScout()
 traced_wiki = TracedWikiScout()
-curator = KnowledgeCurator()
+curator = KnowledgeCurator(model_name=CURATOR_MODEL)
 print("🚀 Probes Active.")

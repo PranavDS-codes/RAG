@@ -9,7 +9,11 @@ data/
 *.egg-info
 .env
 .ipynb_checkpoints/
-
+Diagrams/
+final_results/
+judged/
+ui/
+Notebooks/
 # Virtual environments
 .venv
 
