@@ -139,9 +139,10 @@ class TracedWikiScout(WikiScout):
 
 # 3. Instantiate Resources
 print("⚙️  Injecting High-Fidelity Probes...")
-traced_retriever = TracedOmniRetriever(
-    GRAPH_PATH, CHUNKS_PATH, VECTOR_INDEX_PATH, BM25_INDEX_PATH, QUERY_MODEL
-)
+# traced_retriever = TracedOmniRetriever(
+#     GRAPH_PATH, CHUNKS_PATH, VECTOR_INDEX_PATH, BM25_INDEX_PATH, QUERY_MODEL
+# )
+omni_tool = TracedOmniRetriever(GRAPH_PATH, BM25_INDEX_PATH, QUERY_MODEL)
 traced_scout = TracedWebScout()
 traced_wiki = TracedWikiScout()
 curator = KnowledgeCurator(model_name=CURATOR_MODEL)

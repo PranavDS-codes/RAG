@@ -5,6 +5,12 @@ load_dotenv(override=True)
 # --- API KEYS ---
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")
+NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY")
+
+# New Neo4j Keys
+NEO4J_URI = os.getenv("NEO4J_URI")
+NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 
 # --- MODEL CONFIGURATION ---
 

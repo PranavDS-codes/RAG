@@ -14,9 +14,13 @@ Final_results/
 Judged/
 ui/
 Notebooks/
+new_data/
 # Virtual environments
 .venv
-
+uv.lock
+pyproject.toml
+.DS_Store
+test.py
 # Ignore Jupyter Checkpoints
 interview_questions.md
 ui.txt
