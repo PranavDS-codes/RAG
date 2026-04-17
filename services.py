@@ -136,9 +136,9 @@ class TracedOmniRetriever(OmniRetriever):
         
         # 3. Log the results of each task
         for i, task in enumerate(final_structure["tasks"]):
-            # Extract just the top docs and scores for the log
+            # Extract the top docs, scores, and sources for the log
             # task["results"] contains tuples of (doc, score, sources)
-            log_data = [{"score": r[1], "sources": r[2]} for r in task["results"]]
+            log_data = [{"data": r[0], "score": r[1], "sources": r[2]} for r in task["results"]]
             recorder.log_event("RETRIEVAL_RESULTS", f"Task_{i}", log_data, duration)
 
         return final_structure
