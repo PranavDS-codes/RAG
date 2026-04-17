@@ -54,18 +54,22 @@ SYNTHESIZE_MODEL = "openai/gpt-oss-120b"
 CURATOR_MODEL = "openai/gpt-oss-120b"
 
 # --- PATHS ---
-# CRITICAL: Point to the CLEAN graph from your surgery
-GRAPH_PATH = "./models/knowledge_graph.pkl"
-# GRAPH_PATH = "./models/knowledge_graph_clean.pkl" 
-CHUNKS_PATH = "./models/chunk_metadata.pkl"
-VECTOR_INDEX_PATH = "./models/faiss_index.bin"
+# # CRITICAL: Point to the CLEAN graph from your surgery
+# GRAPH_PATH = "./models/knowledge_graph.pkl"
+# # GRAPH_PATH = "./models/knowledge_graph_clean.pkl" 
+# CHUNKS_PATH = "./models/chunk_metadata.pkl"
+# VECTOR_INDEX_PATH = "./models/faiss_index.bin"
 BM25_INDEX_PATH = "./models/bm25_index.pkl"
 PENDING_KNOWLEDGE_PATH = "./models/pending_knowledge.json"
+NEW_FAISS_INDEX_PATH = "/Users/pranavpant/Desktop/code/RAG/new_data/nvidia_faiss_index.bin"
+NEW_CHUNK_METADATA_PATH = "/Users/pranavpant/Desktop/code/RAG/new_data/nvidia_chunk_metadata.pkl"
+OLD_FAISS_INDEX_PATH =  "/Users/pranavpant/Desktop/code/RAG/models/faiss_index.bin"
+OLD_CHUNK_METADATA_PATH = "/Users/pranavpant/Desktop/code/RAG/models/chunk_metadata.pkl"
 
 # --- SETTINGS ---
 SUPER_NODE_THRESHOLD = 50
 LOG_FILE_PATH = "./models/brain_activity.log"
-REPORTS_DIR = "./models/run_reports"  # <--- NEW: Folder for detailed JSON reports
+REPORTS_DIR = "./models/run_reports/new"  # <--- NEW: Folder for detailed JSON reports
 
 # --- FILTERS ---
 # STOP_RELATIONS = {

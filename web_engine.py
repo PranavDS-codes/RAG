@@ -7,12 +7,14 @@ from tavily import TavilyClient
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 import wikipedia
-from prompts import KNOWLEDGE_CURATION_PROMPT
+from prompts import VECTOR_CHUNK_CURATION_PROMPT, GRAPH_CURATION_PROMPT
+from llm_client import llm_client
 
 # IMPORTS FROM CONFIG
 from config import (
     TAVILY_API_KEY, 
-    GROQ_API_KEY, 
+    GROQ_API_KEY,
+    NVIDIA_API_KEY, 
     SEARCH_CONFIG, 
     MAX_RAW_CHARS,
     PENDING_KNOWLEDGE_PATH
@@ -150,26 +152,104 @@ class WikiScout:
 # ==========================================
 # KNOWLEDGE CURATOR (LLM POWERED)
 # ==========================================
+# class KnowledgeCurator:
+#     def __init__(self, pending_file="./models/pending_knowledge.json", model_name="llama-3.3-70b-versatile"):
+#         self.pending_file = pending_file
+#         os.makedirs(os.path.dirname(self.pending_file), exist_ok=True)
+        
+#         self.llm = ChatGroq(
+#             temperature=0, 
+#             model_name=model_name, 
+#             api_key=GROQ_API_KEY,
+#             model_kwargs={"response_format": {"type": "json_object"}}
+#         )
+
+#     def curate(self, query: str, scout_result: Dict, source_type: str = "web_scout"):
+#         """
+#         Curates knowledge into the specific vector/graph schema requested.
+#         """
+#         if scout_result.get("status") != "success":
+#             return
+
+#         print(f"   🧠 Curating ({source_type})...")
+        
+#         # 1. Prepare Content
+#         sources = scout_result.get("curation_data", [])
+#         combined_text = ""
+#         for s in sources[:5]:
+#             text = s.get("full_text") or s.get("raw_content") or s.get("snippet") or ""
+#             combined_text += f"\n\nSource ({s.get('url')}):\n{text[:2000]}"
+
+#         # 2. Strict Schema Prompt
+#         sys_msg = KNOWLEDGE_CURATION_PROMPT
+        
+#         try:
+#             response = self.llm.invoke([
+#                 SystemMessage(content=sys_msg),
+#                 HumanMessage(content=f"TOPIC: {query}\n\nCONTENT:\n{combined_text[:6000]}")
+#             ])
+            
+#             curated_data = json.loads(response.content)
+            
+#             # 3. Construct Final Artifact matching your example
+#             final_artifact = {
+#                 "status": "pending_review",
+#                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+#                 "original_query": query,
+#                 "data": curated_data,       # Contains vector_content, graph_triples, etc.
+#                 "source_type": source_type  # 'wiki_librarian' or 'web_scout'
+#             }
+            
+#             self._save(final_artifact)
+#             print(f"   💾 Knowledge Artifact Saved to {self.pending_file}")
+            
+#         except Exception as e:
+#             print(f"   ❌ Curation Failed: {e}")
+
+#     def _save(self, artifact):
+#         data = []
+#         if os.path.exists(self.pending_file):
+#             try:
+#                 with open(self.pending_file, "r") as f: 
+#                     content = f.read()
+#                     if content: data = json.loads(content)
+#             except: data = []
+        
+#         data.append(artifact)
+#         with open(self.pending_file, "w") as f: json.dump(data, f, indent=2)
+
+# ==========================================
+# KNOWLEDGE CURATOR (DUAL-LLM POWERED)
+# ==========================================
 class KnowledgeCurator:
-    def __init__(self, pending_file="./models/pending_knowledge.json", model_name="llama-3.3-70b-versatile"):
+    def __init__(self, pending_file="./models/pending_knowledge.jsonl", groq_model="llama-3.3-70b-versatile", nvidia_model="qwen/qwen3-coder-480b-a35b-instruct"):
         self.pending_file = pending_file
         os.makedirs(os.path.dirname(self.pending_file), exist_ok=True)
         
-        self.llm = ChatGroq(
-            temperature=0, 
-            model_name=model_name, 
-            api_key=GROQ_API_KEY,
-            model_kwargs={"response_format": {"type": "json_object"}}
-        )
+        # # 1. Groq Client (For Vector Chunks)
+        # self.groq_llm = ChatGroq(
+        #     temperature=0, 
+        #     model_name=groq_model, 
+        #     api_key=GROQ_API_KEY,
+        #     model_kwargs={"response_format": {"type": "json_object"}}
+        # )
+
+        # # 2. NVIDIA NIM Client (For Graph Extractions)
+        # self.nvidia_client = OpenAI(
+        #     api_key=NVIDIA_API_KEY,
+        #     base_url="https://integrate.api.nvidia.com/v1"
+        # )
+        self.groq_model = groq_model
+        self.nvidia_model = nvidia_model
 
     def curate(self, query: str, scout_result: Dict, source_type: str = "web_scout"):
         """
-        Curates knowledge into the specific vector/graph schema requested.
+        Executes a dual-LLM curation: Vector chunks via Groq, Graph triples via NVIDIA.
         """
         if scout_result.get("status") != "success":
             return
 
-        print(f"   🧠 Curating ({source_type})...")
+        print(f"   🧠 Curating Knowledge for [{query}]...")
         
         # 1. Prepare Content
         sources = scout_result.get("curation_data", [])
@@ -177,43 +257,57 @@ class KnowledgeCurator:
         for s in sources[:5]:
             text = s.get("full_text") or s.get("raw_content") or s.get("snippet") or ""
             combined_text += f"\n\nSource ({s.get('url')}):\n{text[:2000]}"
+            
+        content_payload = f"TOPIC: {query}\n\nCONTENT:\n{combined_text[:6000]}"
 
-        # 2. Strict Schema Prompt
-        sys_msg = KNOWLEDGE_CURATION_PROMPT
-        
+        vector_data = {}
+        graph_data = {}
+
+        # 2. EXECUTE GROQ (Vector Chunking)
+        print("      ↳ Generating Vector Chunks (Groq)...")
         try:
-            response = self.llm.invoke([
-                SystemMessage(content=sys_msg),
-                HumanMessage(content=f"TOPIC: {query}\n\nCONTENT:\n{combined_text[:6000]}")
-            ])
-            
-            curated_data = json.loads(response.content)
-            
-            # 3. Construct Final Artifact matching your example
-            final_artifact = {
-                "status": "pending_review",
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "original_query": query,
-                "data": curated_data,       # Contains vector_content, graph_triples, etc.
-                "source_type": source_type  # 'wiki_librarian' or 'web_scout'
-            }
-            
-            self._save(final_artifact)
-            print(f"   💾 Knowledge Artifact Saved to {self.pending_file}")
-            
+            vector_data = llm_client.generate_json(
+            system_prompt=VECTOR_CHUNK_CURATION_PROMPT,
+            user_prompt=content_payload,
+            primary_provider="groq",
+            groq_model=self.groq_model,
+            nvidia_model=self.nvidia_model
+        )
         except Exception as e:
-            print(f"   ❌ Curation Failed: {e}")
+            print(f"      ⚠️ Vector Curation Failed: {e}")
 
-    def _save(self, artifact):
-        data = []
-        if os.path.exists(self.pending_file):
-            try:
-                with open(self.pending_file, "r") as f: 
-                    content = f.read()
-                    if content: data = json.loads(content)
-            except: data = []
+        # 3. EXECUTE NVIDIA (Graph Extraction)
+        print("      ↳ Extracting Graph Topology (NVIDIA NIM)...")
+        try:
+            graph_data = llm_client.generate_json(
+            system_prompt=GRAPH_CURATION_PROMPT,
+            user_prompt=content_payload,
+            primary_provider="nvidia",
+            groq_model=self.groq_model,
+            nvidia_model=self.nvidia_model
+        )
+        except Exception as e:
+            print(f"      ⚠️ Graph Curation Failed: {e}")
+
+        # 4. Construct & Save JSONL Artifact
+        final_artifact = {
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "original_query": query,
+            "source_type": source_type,
+            "vector_chunks": vector_data.get("chunks", []),
+            "graph_extractions": {
+                "entities": graph_data.get("entities", []),
+                "relationships": graph_data.get("relationships", [])
+            }
+        }
         
-        data.append(artifact)
-        with open(self.pending_file, "w") as f: json.dump(data, f, indent=2)
+        self._save_jsonl(final_artifact)
+        print(f"   💾 Dual-Artifact appended to {self.pending_file}")
+
+    def _save_jsonl(self, artifact):
+        """Appends a single JSON object to the JSONL file."""
+        with open(self.pending_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(artifact, ensure_ascii=False) + "\n")
+
 # example usage
 # curator = KnowledgeCurator(model_name=SCOUT_MODEL, pending_file=PENDING_KNOWLEDGE_PATH)

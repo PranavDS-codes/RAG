@@ -1,36 +1,40 @@
-import json
-from openai import OpenAI
 import numpy as np
 import pickle
 import faiss
 import unicodedata
 import requests
 from sentence_transformers import SentenceTransformer, CrossEncoder
-from langchain_groq import ChatGroq
-from langchain_core.messages import SystemMessage, HumanMessage
+
 from typing import List, Dict, Any
 from prompts import QUERY_DECOMPOSITION_PROMPT
+from neo4j import GraphDatabase
+from collections import defaultdict
+from llm_client import llm_client
 
 # IMPORTS FROM CONFIG
-from config import (
-    GROQ_API_KEY, 
+from config import ( 
     STOP_NODES, 
     STOP_RELATIONS, 
     SUPER_NODE_THRESHOLD,
-    NVIDIA_API_KEY
+    NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD,
+    BM25_INDEX_PATH,
+    NEW_FAISS_INDEX_PATH, NEW_CHUNK_METADATA_PATH,
+    OLD_FAISS_INDEX_PATH, OLD_CHUNK_METADATA_PATH
 )
+
 
 # ==========================================
 # ROBUST QUERY OPTIMIZER (AUTO-FIXING)
 # ==========================================
 class QueryOptimizer:
     def __init__(self, model_name="llama-3.3-70b-versatile", api_key=None):
-        self.llm = ChatGroq(
-            temperature=0, 
-            model_name=model_name, 
-            api_key=api_key,
-            model_kwargs={"response_format": {"type": "json_object"}}
-        )
+        # self.llm = ChatGroq(
+        #     temperature=0, 
+        #     model_name=model_name, 
+        #     api_key=api_key,
+        #     model_kwargs={"response_format": {"type": "json_object"}}
+        # )
+        self.model_name = model_name
 
     def _clean_text(self, text):
         """Standardizes text to ASCII-compatible format."""
@@ -71,12 +75,20 @@ class QueryOptimizer:
         system_prompt = QUERY_DECOMPOSITION_PROMPT
         
         try:
-            response = self.llm.invoke([
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=query)
-            ])
-            raw_result = json.loads(response.content)
-            
+            # response = self.llm.invoke([
+            #     SystemMessage(content=system_prompt),
+            #     HumanMessage(content=query)
+            # ])
+            # raw_result = json.loads(response.content)
+
+            # 🚀 NEW: Call the centralized LLM client!
+            raw_result = llm_client.generate_json(
+                system_prompt=QUERY_DECOMPOSITION_PROMPT,
+                user_prompt=query,
+                primary_provider="groq",
+                groq_model=self.model_name
+            )
+
             # 1. RUN THE ADAPTER
             result = self._normalize_response(raw_result)
             
@@ -141,15 +153,88 @@ class GraphSearcher:
                 queue.append((neighbor, dist + 1))
         
         return list(facts)
+    
+# ==========================================
+# GRAPH SEARCH MODULE (NEO4J UPGRADE)
+# ==========================================
+class Neo4jGraphSearcher:
+    def __init__(self, uri, username, password, threshold=50):
+        self.driver = GraphDatabase.driver(uri, auth=(username, password))
+        self.threshold = threshold
+
+    def close(self):
+        self.driver.close()
+
+    def get_neighbors(self, entity_name):
+        """
+        Executes a 1-hop fuzzy search in Neo4j and returns rich semantic facts.
+        """
+        if not entity_name or len(entity_name) < 2:
+            return []
+
+        query = """
+        // 1. Fuzzy match the starting entity
+        MATCH (n:Entity)
+        WHERE toLower(n.name) CONTAINS toLower($entity_name)
+        
+        // 2. Expand 1-hop in any direction
+        MATCH (n)-[r]-(m:Entity)
+        
+        // 3. Apply Stop-Words (converted to lower case in Python before passing)
+        WHERE NOT toLower(m.name) IN $stop_nodes
+          AND NOT toLower(type(r)) IN $stop_relations
+          
+        // 4. Return top results to prevent Super-Node context blowouts
+        WITH n, r, m
+        LIMIT $threshold
+        
+        RETURN n.name AS source, 
+               type(r) AS rel_type, 
+               m.name AS target, 
+               r.description AS description
+        """
+        
+        facts = []
+        with self.driver.session() as session:
+            # We pass the STOP lists from your config directly into the query
+            result = session.run(
+                query, 
+                entity_name=entity_name,
+                stop_nodes=[sn.lower() for sn in STOP_NODES],
+                stop_relations=[sr.lower() for sr in STOP_RELATIONS],
+                threshold=self.threshold
+            )
+            
+            for record in result:
+                src = record["source"]
+                rel = record["rel_type"]
+                tgt = record["target"]
+                desc = record["description"]
+                
+                # Format the rich fact for the LLM
+                fact_str = f"{src} --[{rel}]--> {tgt}"
+                if desc:
+                    fact_str += f" | Context: {desc}"
+                    
+                facts.append(fact_str)
+                
+        return facts
 
 # ==========================================
 # CELL 4: THE OMNI-RETRIEVER (DUAL-ENGINE VECTOR & RERANK)
 # ==========================================
 class OmniRetriever:
-    def __init__(self, graph_path, bm25_path, model_name):
+    def __init__(self, model_name): # Removed graph_path
         # Tools
         self.optimizer = QueryOptimizer(api_key=GROQ_API_KEY, model_name=model_name)
-        self.graph_engine = GraphSearcher(graph_path, threshold=SUPER_NODE_THRESHOLD)
+        # self.graph_engine = GraphSearcher(graph_path, threshold=SUPER_NODE_THRESHOLD) old graph engine
+        print("🔗 Connecting to Neo4j Knowledge Graph...")
+        self.graph_engine = Neo4jGraphSearcher(
+            uri=NEO4J_URI,
+            username=NEO4J_USERNAME,
+            password=NEO4J_PASSWORD,
+            threshold=SUPER_NODE_THRESHOLD
+        )
         
         print("📂 Loading Resources...")
         
@@ -164,8 +249,8 @@ class OmniRetriever:
         
         try:
             print("🧠 Loading NVIDIA Vector Store (Primary)...")
-            self.nvidia_index = faiss.read_index("../models/nvidia_faiss_index.bin")
-            with open("../models/nvidia_chunk_metadata.pkl", "rb") as f:
+            self.nvidia_index = faiss.read_index(NEW_FAISS_INDEX_PATH)
+            with open(NEW_CHUNK_METADATA_PATH, "rb") as f:
                 self.nvidia_chunks = pickle.load(f)
             self.nvidia_active = True
         except Exception as e:
@@ -176,8 +261,8 @@ class OmniRetriever:
         try:
             print("💾 Loading BGE Local Vector Store (Fallback)...")
             self.local_embedder = SentenceTransformer('BAAI/bge-small-en-v1.5')
-            self.local_index = faiss.read_index("../models/faiss_index.bin")
-            with open("../models/chunk_metadata.pkl", "rb") as f:
+            self.local_index = faiss.read_index(OLD_FAISS_INDEX_PATH)
+            with open(OLD_CHUNK_METADATA_PATH, "rb") as f:
                 self.local_chunks = pickle.load(f)
             self.local_active = True
         except Exception as e:
@@ -189,7 +274,7 @@ class OmniRetriever:
         active_chunks = self.nvidia_chunks if self.nvidia_active else self.local_chunks
         self.chunk_texts = [c['text'] for c in active_chunks]
         
-        with open(bm25_path, "rb") as f:
+        with open(BM25_INDEX_PATH, "rb") as f:
             self.bm25 = pickle.load(f)
             
         # 4. Setup Local Reranker (Fallback)
@@ -209,7 +294,8 @@ class OmniRetriever:
         Features automatic NVIDIA API fallback to local processing for both Vectors and Reranking.
         """
         candidates = {} # text -> score
-        
+        source_tracker = defaultdict(set) # NEW: text -> set of sources
+
         # ---------------------------------------------------------
         # 1. VECTOR (HyDE) - DUAL ENGINE
         # ---------------------------------------------------------
@@ -231,7 +317,9 @@ class OmniRetriever:
                     D, I = self.nvidia_index.search(hyde_emb, k=top_k*3)
                     for idx in I[0]:
                         if idx < len(self.nvidia_chunks):
-                            candidates[self.nvidia_chunks[idx]['text']] = 0.0
+                            txt = self.nvidia_chunks[idx]['text']
+                            candidates[txt] = 0.0
+                            source_tracker[txt].add('Vector (NVIDIA)')
                     vector_success = True
                     if verbose: print("   [Vector] 🟢 Used NVIDIA NIM embeddings.")
                 except Exception as e:
@@ -246,7 +334,9 @@ class OmniRetriever:
                     D, I = self.local_index.search(hyde_emb, k=top_k*3)
                     for idx in I[0]:
                         if idx < len(self.local_chunks):
-                            candidates[self.local_chunks[idx]['text']] = 0.0
+                            txt = self.local_chunks[idx]['text']
+                            candidates[txt] = 0.0
+                            source_tracker[txt].add('Vector (Local BGE)')
                     if verbose: print("   [Vector] 🟡 Used Local BGE embeddings (Fallback).")
                 except Exception as e:
                     if verbose: print(f"   [Vector] ❌ Vector Search Failed Completely: {e}")
@@ -259,24 +349,37 @@ class OmniRetriever:
         bm25_docs = self.bm25.get_top_n(tokenized_query, self.chunk_texts, n=top_k*3)
         for txt in bm25_docs:
             candidates[txt] = 0.0
+            source_tracker[txt].add('BM25 Keyword')
 
         # ---------------------------------------------------------
         # 3. GRAPH (Entities)
         # ---------------------------------------------------------
+        # graph_facts = []
+        # for entity in task.get('graph_entities', []):
+        #     if entity in self.graph_engine.G:
+        #         facts = self.graph_engine.get_neighbors(entity)
+        #         graph_facts.extend(facts)
+        #     else:
+        #         for node in self.graph_engine.G.nodes():
+        #             if str(node).lower() == entity.lower():
+        #                 facts = self.graph_engine.get_neighbors(node)
+        #                 graph_facts.extend(facts)
+        #                 break
+        
+        # for fact in graph_facts[:20]: 
+        #     candidates[fact] = 0.0
+        
+        # ---------------------------------------------------------
+        # 3. GRAPH (Entities) via Neo4j
+        # ---------------------------------------------------------
         graph_facts = []
         for entity in task.get('graph_entities', []):
-            if entity in self.graph_engine.G:
-                facts = self.graph_engine.get_neighbors(entity)
-                graph_facts.extend(facts)
-            else:
-                for node in self.graph_engine.G.nodes():
-                    if str(node).lower() == entity.lower():
-                        facts = self.graph_engine.get_neighbors(node)
-                        graph_facts.extend(facts)
-                        break
-        
-        for fact in graph_facts[:20]: 
+            # Neo4j handles the fuzzy matching and stop-words directly!
+            facts = self.graph_engine.get_neighbors(entity)
+            graph_facts.extend(facts)
+        for fact in graph_facts[:20]:
             candidates[fact] = 0.0
+            source_tracker[fact].add('Graph (Neo4j)')
             
         # ---------------------------------------------------------
         # 4. RE-RANKING - DUAL ENGINE
@@ -325,20 +428,30 @@ class OmniRetriever:
             except Exception as e:
                 if verbose: print(f"   [Rerank] ❌ Reranking Failed Completely: {e}")
 
-        # Zip documents with scores and sort
-        final_ranked = sorted(list(zip(unique_docs, scores)), key=lambda x: x[1], reverse=True)
+        # Zip documents with scores AND sources
+        final_ranked = []
+        for i, doc in enumerate(unique_docs):
+            final_ranked.append((doc, scores[i], list(source_tracker[doc])))
+            
+        final_ranked.sort(key=lambda x: x[1], reverse=True)
         return final_ranked[:top_k]
 
     def _deduplicate_and_flatten(self, task_results):
         unique_map = {} 
         for task in task_results:
-            for doc, score in task['results']:
+            for doc, score, sources in task['results']: # Unpack 3 items now
                 if doc not in unique_map:
-                    unique_map[doc] = score
+                    unique_map[doc] = {"score": score, "sources": set(sources)}
                 else:
-                    unique_map[doc] = max(unique_map[doc], score)
+                    unique_map[doc]["score"] = max(unique_map[doc]["score"], score)
+                    unique_map[doc]["sources"].update(sources)
         
-        final_list = sorted(unique_map.items(), key=lambda x: x[1], reverse=True)
+        # Convert back to a sorted list of tuples
+        final_list = sorted(
+            [(k, v["score"], list(v["sources"])) for k, v in unique_map.items()], 
+            key=lambda x: x[1], 
+            reverse=True
+        )
         return final_list
 
     def retrieve(self, query, top_k_per_task=5, verbose=True):

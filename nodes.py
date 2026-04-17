@@ -13,6 +13,29 @@ from prompts import ( AUDIT_NODE_PROMPT, SYNTHESIZE_NODE_PROMPT,
 # Import the initialized tools and recorder
 from services import traced_retriever, traced_scout, traced_wiki, curator, recorder
 
+# def retrieve_node(state: BrainState):
+#     query = state["query"]
+#     print(f"\n📚 [LIBRARIAN] Executing Traced Retrieval...")
+    
+#     t0 = time.perf_counter()
+#     results = traced_retriever.retrieve(query, top_k_per_task=5)
+#     duration = (time.perf_counter() - t0) * 1000
+    
+#     evidence = []
+    
+#     for task in results.get("tasks", []):
+#         for txt, score in task["results"]:
+#             formatted = f"[Score: {score:.2f}] {txt}"
+#             evidence.append(formatted)
+    
+#     recorder.log_event("NODE_OUTPUT", "retrieve_node", {"evidence_count": len(evidence)}, duration)
+    
+#     # CHANGE: We ONLY return 'internal_knowledge'. 
+#     # We do NOT touch 'combined_context' yet.
+#     return {
+#         "internal_knowledge": evidence
+#     }
+
 def retrieve_node(state: BrainState):
     query = state["query"]
     print(f"\n📚 [LIBRARIAN] Executing Traced Retrieval...")
@@ -24,14 +47,15 @@ def retrieve_node(state: BrainState):
     evidence = []
     
     for task in results.get("tasks", []):
-        for txt, score in task["results"]:
-            formatted = f"[Score: {score:.2f}] {txt}"
+        # NEW: We now unpack 3 items! (text, score, sources)
+        for txt, score, sources in task["results"]:
+            source_str = " + ".join(sources)
+            # We stamp the source directly into the text so the LLM sees it
+            formatted = f"[Sources: {source_str} | Match: {score:.2f}]\n{txt}"
             evidence.append(formatted)
     
     recorder.log_event("NODE_OUTPUT", "retrieve_node", {"evidence_count": len(evidence)}, duration)
     
-    # CHANGE: We ONLY return 'internal_knowledge'. 
-    # We do NOT touch 'combined_context' yet.
     return {
         "internal_knowledge": evidence
     }
@@ -102,10 +126,6 @@ def verify_node(state: BrainState):
         # Ensure we are handling strings
         text = str(item)
         formatted_context += f"--- EVIDENCE FRAGMENT {i+1} ---\n{text}\n\n"
-    
-    # Import the NEW prompt from your prompts file
-    from prompts import VERIFY_NODE_PROMPT 
-    
     user_msg = f"""
     USER QUERY: {query}
     

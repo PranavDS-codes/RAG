@@ -72,41 +72,128 @@ You must output a single JSON object. Do not include markdown formatting (like `
 }
 """
 
-KNOWLEDGE_CURATION_PROMPT = """
-You are the **Graph RAG Knowledge Architect**.
-Your goal is to transform raw, noisy web content into a pristine, structured Knowledge Artifact optimized for both vector search and graph traversal.
+GRAPH_CURATION_PROMPT = """
+You are a high-precision knowledge graph extraction system.
 
-### INSTRUCTIONS
+Your job is to extract only information that is explicitly supported by the text.
 
-1. **VECTOR CONTENT (The Summary)**:
-- Synthesize a **dense, information-rich paragraph** that directly answers the User Query based *only* on the Scraped Content.
-- Remove conversational fluff ("The article states...", "It is important to note...").
-- Focus on factual density: include dates, numbers, names, and specific technical details.
-- This text will be embedded; ensure it is semantically complete and self-contained.
+Instructions:
+- Return valid JSON only.
+- Do not include markdown, explanations, or extra keys.
+- Use only the information present in the text.
+- Do not infer missing facts.
+- Do not guess.
+- If something is ambiguous, omit it.
+- Deduplicate entities and relationships within this chunk.
+- Normalize obvious aliases into one canonical entity name when the text clearly supports it.
+- Keep entity summaries brief, factual, and grounded only in the text.
+- Extract only binary relationships between entities.
+- Every relationship must be directly supported by a verbatim evidence snippet.
+- If no valid entities or relationships exist, return empty arrays.
 
-2. **GRAPH TRIPLES (The Knowledge Graph)**:
-- Extract 5-15 semantic triples: `{"head": "Subject", "relation": "Predicate", "tail": "Object"}`.
-- **Entity Rules (Head/Tail)**: Use precise Proper Nouns or technical concepts. Keep them atomic (e.g., "Elon Musk" instead of "The CEO of Tesla Elon Musk").
-- **Relation Rules**: Use active, directed verbs (e.g., "founded", "acquired", "located_in", "author_of"). Avoid generic relations like "is" or "has" if a more specific one exists.
-- **Canonicalization**: Resolve pronouns and aliases to their full names (e.g., replace "he" with the person's name).
+Entity rules:
+- "name" must be the canonical entity name.
+- "type" is open-ended, but must be concise and semantically meaningful.
+- Prefer specific types when the text supports them.
+- Do not use overly broad types when a more precise type is justified by the text.
 
-3. **METADATA**:
-- `confidence_score`: 0.0 (Irrelevant/Garbage) to 1.0 (Perfect, Factual Match).
-- `category`: Classify the content into one specific domain tag (e.g., "Market Data", "Technical Documentation", "Biography", "News").
+Relationship rules:
+- "source_entity" and "target_entity" must exactly match names in the entities list.
+- "relation_type" is open-ended, but must be specific, concise, and written in UPPERCASE_SNAKE_CASE.
+- Prefer precise action or role labels.
+- Avoid vague relation types such as RELATED_TO, ASSOCIATED_WITH, LINKED_TO, or CONNECTED_TO unless the text truly gives no more specific relation.
+- "relation_description" must be one concise sentence explaining the relationship strictly based on the text.
+- "evidence_snippet" must be a short verbatim quote from the text that directly supports the relationship.
+- "confidence_score" must be an integer from 1 to 10.
 
-### OUTPUT SCHEMA (Strict JSON)
+Confidence scoring:
+- 10 = directly and unambiguously stated
+- 8-9 = clearly supported with minor normalization
+- 5-7 = supported but somewhat compressed
+- 1-4 = weak or ambiguous support
+
+Output schema:
+{{
+  "entities": [
+    {{
+      "name": "Canonical Name",
+      "type": "Open-ended concise type",
+      "summary": "One sentence grounded only in the text."
+    }}
+  ],
+  "relationships": [
+    {{
+      "source_entity": "Entity Name",
+      "target_entity": "Entity Name",
+      "relation_type": "UPPERCASE_SNAKE_CASE",
+      "relation_description": "One concise grounded sentence.",
+      "evidence_snippet": "Direct supporting quote.",
+      "confidence_score": 10
+    }}
+  ]
+}}
+
+SCHEMA EXAMPLE:
 {
-                "vector_content": "Dense text summary...",
-                "graph_triples": [
-                    {"head": "Entity A", "relation": "relationship_verb", "tail": "Entity B"},
-                    {"head": "Entity B", "relation": "relationship_verb", "tail": "Entity C"}
-                ],
-                "metadata": {
-                    "confidence_score": 0.85,
-                    "category": "Domain Tag"
-                }
+    "entities": [{"name": "Mathew Knowles", "type": "Person", "summary": "Former Xerox manager who managed Destiny's Child."}],
+    "relationships": [{
+        "source_entity": "Mathew Knowles",
+        "target_entity": "Destiny's Child",
+        "relation_type": "MANAGED_AND_TRAINED",
+        "relation_description": "Mathew Knowles resigned from his job to manage the group and established a boot camp.",
+        "evidence_snippet": "Mathew Knowles, resigned from his job to manage the group. He established a 'boot camp'...",
+        "confidence_score": 10
+    }]
 }
-""" 
+
+"""
+
+VECTOR_CHUNK_CURATION_PROMPT = """
+You are an elite text-processing pipeline optimized for Semantic Vector Search.
+
+Your job is to read raw, messy excerpts from web pages or wikis and convert them into clean, highly dense, and perfectly self-contained semantic chunks.
+
+Instructions:
+- Return valid JSON only.
+- Do not include markdown, explanations, or extra keys.
+- Process the provided content into one or more discrete chunks based on sub-topics.
+- Do not hallucinate or add outside knowledge. Rely ONLY on the provided text.
+
+Rules for generating "text" chunks:
+1. Self-Containment (CRITICAL): A chunk must make complete sense if read in total isolation. 
+2. Pronoun Resolution: You MUST replace ambiguous pronouns (he, she, it, they, this) with the actual entity names they refer to. (e.g., Change "She released her album in 2022" to "Beyoncé released the Renaissance album in 2022").
+3. Semantic Density: Strip out all web-scraping artifacts, boilerplate, navigation text, "click here" links, and irrelevant tangents.
+4. Optimal Sizing: A chunk should ideally be 2 to 5 sentences long, focusing on a single cohesive thought, event, or theme. If the input covers multiple distinct events, split them into multiple chunks.
+5. Factual Grounding: Ensure dates, numbers, and proper nouns are preserved exactly as they appear in the source.
+
+Output schema:
+{{
+  "chunks": [
+    {{
+      "topic_focus": "A 3-5 word label describing the specific focus of this chunk.",
+      "text": "The perfectly clean, self-contained, pronoun-resolved paragraph.",
+      "key_entities": ["List", "of", "up", "to", "5", "primary", "entities", "in", "chunk"]
+    }}
+  ]
+}}
+
+SCHEMA EXAMPLE:
+{
+  "chunks": [
+    {
+      "topic_focus": "Destiny's Child Management",
+      "text": "In 1995, Mathew Knowles resigned from his job as a medical-equipment salesman to manage the R&B group Destiny's Child full-time. Mathew Knowles established a 'boot camp' for the group's training and secured a contract with Columbia Records in 1996.",
+      "key_entities": ["Mathew Knowles", "Destiny's Child", "Columbia Records"]
+    },
+    {
+      "topic_focus": "Dangerously in Love Success",
+      "text": "Beyoncé's debut solo album, Dangerously in Love, was released in June 2003. Dangerously in Love sold 317,000 copies in its first week, debuted atop the US Billboard 200, and earned Beyoncé five awards at the 46th Annual Grammy Awards.",
+      "key_entities": ["Beyoncé", "Dangerously in Love", "Billboard 200", "Grammy Awards"]
+    }
+  ]
+}
+"""
+
 AUDIT_NODE_PROMPT = """
 You are the Gap Analysis & Freshness Auditor.
 Your Job: Evaluate if the provided INTERNAL EVIDENCE is sufficient to answer the USER QUERY fully and accurately.
