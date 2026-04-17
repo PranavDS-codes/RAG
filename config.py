@@ -16,42 +16,44 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 
 # 1. Premise Model
 # PREMISE_MODEL = "llama-3.3-70b-versatile" 
+PREMISE_PROVIDER = "groq"
 PREMISE_MODEL = "openai/gpt-oss-120b"
 
 # 1. RETRIEVAL (Query Decomposer)
-# Needs to be instruction-following and structured JSON capable.
-# QUERY_MODEL = "llama-3.3-70b-versatile" 
+QUERY_PROVIDER = "groq"
 QUERY_MODEL = "openai/gpt-oss-120b"
 
 # 2. AUDIT (Fact Checker)
-# Needs to be logical and strict.
-# AUDIT_MODEL = "llama-3.3-70b-versatile" 
+AUDIT_PROVIDER = "groq"
 AUDIT_MODEL = "openai/gpt-oss-120b"
+# AUDIT_MODEL = "llama-3.3-70b-versatile" 
 
 # 3. VERIFY (Search Quality)
-# Needs to be logical and strict.
-# VERIFY_MODEL = "llama-3.3-70b-versatile" 
+VERIFY_PROVIDER = "groq"
 VERIFY_MODEL = "openai/gpt-oss-120b"
+# VERIFY_MODEL = "llama-3.3-70b-versatile" 
 
 # 4. REFINE (Failed Search -> Search Strategy Refiner)
-# Needs to be logical and strict.
-# REFINE_MODEL = "llama-3.3-70b-versatile" 
+REFINE_PROVIDER = "groq"
 REFINE_MODEL = "openai/gpt-oss-120b"
+# REFINE_MODEL = "llama-3.3-70b-versatile" 
 
 # 5. SCOUT (Web Researcher)
-# Used by Tavily/Curator for summarization.
-# SCOUT_MODEL = "llama-3.3-70b-versatile"
+SCOUT_PROVIDER = "groq"
 SCOUT_MODEL = "openai/gpt-oss-120b" 
+# SCOUT_MODEL = "llama-3.3-70b-versatile"
 
 # 6. SYNTHESIS (Final Answer Writer)
-# Needs to be creative, professional, and good at citations.
-# SYNTHESIZE_MODEL = "llama-3.3-70b-versatile"
+SYNTHESIZE_PROVIDER = "groq"
 SYNTHESIZE_MODEL = "openai/gpt-oss-120b"
+# SYNTHESIZE_MODEL = "llama-3.3-70b-versatile"
 
 # 7. CURATOR (Pending Knowledge Base Builder)
-
+VECTOR_CURATOR_PROVIDER = "groq"
+VECTOR_CURATOR_MODEL = "openai/gpt-oss-120b"
+GRAPH_CURATOR_PROVIDER = "nvidia"
+GRAPH_CURATOR_MODEL = "qwen/qwen3-coder-480b-a35b-instruct"
 # CURATOR_MODEL = "llama-3.3-70b-versatile"
-CURATOR_MODEL = "openai/gpt-oss-120b"
 
 # --- PATHS ---
 # # CRITICAL: Point to the CLEAN graph from your surgery

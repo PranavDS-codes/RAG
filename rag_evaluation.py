@@ -8,6 +8,7 @@ import time
 import json
 from datetime import datetime
 from tqdm import tqdm
+from llm_client import llm_client
 
 # ==========================================
 # 1. TEXT NORMALIZATION & UTILS
@@ -113,8 +114,7 @@ def calculate_hit_rate(retrieved_docs, ground_truth_title):
 # ==========================================
 
 class LLMJudge:
-    def __init__(self, groq_client, model="llama-3.3-70b-versatile"):
-        self.client = groq_client
+    def __init__(self, groq_client=None, model="llama-3.3-70b-versatile"):
         self.model = model
 
     def evaluate_faithfulness(self, context, answer):
@@ -311,14 +311,14 @@ class LLMJudge:
 
     def _call_judge(self, prompt):
         try:
-            completion = self.client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
-                model=self.model,
-                temperature=0.0,
-                response_format={"type": "json_object"} 
+            res = llm_client.generate_json(
+                system_prompt="You are an expert evaluator.",
+                user_prompt=prompt,
+                primary_provider="groq",
+                groq_model=self.model,
+                temperature=0.0
             )
-            content = completion.choices[0].message.content
-            return extract_json_score(content)
+            return float(res.get("score", 0.0)), res.get("reason", "No reason provided")
         except Exception as e:
             return 0.0, f"Error: {str(e)}"
 

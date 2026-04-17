@@ -2,7 +2,6 @@ import numpy as np
 import pickle
 import faiss
 import unicodedata
-import requests
 from sentence_transformers import SentenceTransformer, CrossEncoder
 
 from typing import List, Dict, Any
@@ -27,13 +26,8 @@ from config import (
 # ROBUST QUERY OPTIMIZER (AUTO-FIXING)
 # ==========================================
 class QueryOptimizer:
-    def __init__(self, model_name="llama-3.3-70b-versatile", api_key=None):
-        # self.llm = ChatGroq(
-        #     temperature=0, 
-        #     model_name=model_name, 
-        #     api_key=api_key,
-        #     model_kwargs={"response_format": {"type": "json_object"}}
-        # )
+    def __init__(self, provider="groq", model_name="llama-3.3-70b-versatile"):
+        self.provider = provider
         self.model_name = model_name
 
     def _clean_text(self, text):
@@ -85,8 +79,8 @@ class QueryOptimizer:
             raw_result = llm_client.generate_json(
                 system_prompt=QUERY_DECOMPOSITION_PROMPT,
                 user_prompt=query,
-                primary_provider="groq",
-                groq_model=self.model_name
+                provider=self.provider,
+                model=self.model_name
             )
 
             # 1. RUN THE ADAPTER
@@ -224,9 +218,9 @@ class Neo4jGraphSearcher:
 # CELL 4: THE OMNI-RETRIEVER (DUAL-ENGINE VECTOR & RERANK)
 # ==========================================
 class OmniRetriever:
-    def __init__(self, model_name): # Removed graph_path
+    def __init__(self, provider, model_name): # Removed graph_path
         # Tools
-        self.optimizer = QueryOptimizer(api_key=GROQ_API_KEY, model_name=model_name)
+        self.optimizer = QueryOptimizer(provider=provider, model_name=model_name)
         # self.graph_engine = GraphSearcher(graph_path, threshold=SUPER_NODE_THRESHOLD) old graph engine
         print("🔗 Connecting to Neo4j Knowledge Graph...")
         self.graph_engine = Neo4jGraphSearcher(
@@ -239,12 +233,7 @@ class OmniRetriever:
         print("📂 Loading Resources...")
         
         # 1. Setup NVIDIA NIM (Primary Vector & Rerank Engine)
-        self.nvidia_client = OpenAI(
-            api_key=NVIDIA_API_KEY,
-            base_url="https://integrate.api.nvidia.com/v1"
-        )
         self.nvidia_model_name = "nvidia/nv-embed-v1"
-        self.nvidia_rerank_url = "https://ai.api.nvidia.com/v1/retrieval/nvidia/reranking"
         self.nvidia_rerank_model = "nv-rerank-qa-mistral-4b:1"
         
         try:
@@ -306,13 +295,8 @@ class OmniRetriever:
             # --- ATTEMPT 1: NVIDIA PRIMARY ---
             if self.nvidia_active:
                 try:
-                    response = self.nvidia_client.embeddings.create(
-                        input=[hyde_text],
-                        model=self.nvidia_model_name,
-                        encoding_format="float",
-                        extra_body={"input_type": "query", "truncate": "NONE"}
-                    )
-                    hyde_emb = np.array([response.data[0].embedding], dtype=np.float32)
+                    embedding_data = llm_client.generate_embeddings(text=hyde_text, model=self.nvidia_model_name)
+                    hyde_emb = np.array([embedding_data], dtype=np.float32)
                     
                     D, I = self.nvidia_index.search(hyde_emb, k=top_k*3)
                     for idx in I[0]:
@@ -393,22 +377,13 @@ class OmniRetriever:
         # --- ATTEMPT 1: NVIDIA RERANKER ---
         if self.nvidia_active:
             try:
-                passages_for_reranker = [{"text": doc} for doc in unique_docs]
-                headers = {
-                    "Authorization": f"Bearer {NVIDIA_API_KEY}",
-                    "Accept": "application/json",
-                }
-                payload = {
-                    "model": self.nvidia_rerank_model,
-                    "query": {"text": task['sub_query']},
-                    "passages": passages_for_reranker
-                }
-                
-                response = requests.post(self.nvidia_rerank_url, headers=headers, json=payload, timeout=15)
-                response.raise_for_status()
+                rankings = llm_client.rerank_passages(
+                    query=task['sub_query'],
+                    passages=unique_docs,
+                    model=self.nvidia_rerank_model
+                )
                 
                 # Map returned logits back to the original unique_docs indices
-                rankings = response.json()['rankings']
                 for rank_data in rankings:
                     idx = rank_data['index']
                     scores[idx] = rank_data['logit']

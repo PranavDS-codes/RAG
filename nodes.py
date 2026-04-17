@@ -1,11 +1,10 @@
 import time
 import json
-from langchain_groq import ChatGroq
-from langchain_core.messages import SystemMessage, HumanMessage
+from llm_client import llm_client
 
 from config import ( 
-    GROQ_API_KEY, AUDIT_MODEL, SYNTHESIZE_MODEL, 
-    VERIFY_MODEL, REFINE_MODEL )
+    AUDIT_PROVIDER, AUDIT_MODEL, SYNTHESIZE_PROVIDER, SYNTHESIZE_MODEL, 
+    VERIFY_PROVIDER, VERIFY_MODEL, REFINE_PROVIDER, REFINE_MODEL )
 from state import BrainState
 from prompts import ( AUDIT_NODE_PROMPT, SYNTHESIZE_NODE_PROMPT, 
     VERIFY_NODE_PROMPT, REFINE_NODE_PROMPT )
@@ -68,13 +67,14 @@ def audit_node(state: BrainState):
     # 1. Run the LLM Audit
     evidence_text = "\n".join(evidence[:20]) 
     user_msg = f"QUERY: {query}\n\nINTERNAL EVIDENCE:\n{evidence_text}"    
-    audit_llm = ChatGroq(temperature=0, model_name=AUDIT_MODEL, api_key=GROQ_API_KEY)
     try:
-        response = audit_llm.invoke([
-            SystemMessage(content=AUDIT_NODE_PROMPT),
-            HumanMessage(content=user_msg)
-        ])
-        analysis = json.loads(response.content)
+        analysis = llm_client.generate_json(
+            system_prompt=AUDIT_NODE_PROMPT,
+            user_prompt=user_msg,
+            provider=AUDIT_PROVIDER,
+            model=AUDIT_MODEL,
+            temperature=0.0
+        )
     except Exception as e:
         print(f"   ⚠️ Auditor Error: {e}")
         analysis = {"sufficient": False, "missing_topics": [query]}
@@ -134,19 +134,14 @@ def verify_node(state: BrainState):
     """ 
     # Note: Keep a high character limit (15k-20k) for the Verifier so it sees details.
     
-    verifier_llm = ChatGroq(
-        temperature=0, 
-        model_name=VERIFY_MODEL, 
-        api_key=GROQ_API_KEY,
-        model_kwargs={"response_format": {"type": "json_object"}} # Force JSON mode
-    )
-    
     try:
-        response = verifier_llm.invoke([
-            SystemMessage(content=VERIFY_NODE_PROMPT),
-            HumanMessage(content=user_msg)
-        ])
-        verification = json.loads(response.content)
+        verification = llm_client.generate_json(
+            system_prompt=VERIFY_NODE_PROMPT,
+            user_prompt=user_msg,
+            provider=VERIFY_PROVIDER,
+            model=VERIFY_MODEL,
+            temperature=0.0
+        )
         
     except Exception as e:
         print(f"   ⚠️ Verifier Error: {e}")
@@ -191,21 +186,14 @@ def refine_node(state: BrainState):
     FAILURE REASON: {failure_reason}
     """
     
-    refiner_llm = ChatGroq(
-        temperature=0.4, 
-        model_name=REFINE_MODEL, 
-        api_key=GROQ_API_KEY,
-        model_kwargs={"response_format": {"type": "json_object"}}
-    )
-    
     try:
-        response = refiner_llm.invoke([
-            SystemMessage(content=sys_msg),
-            HumanMessage(content=user_msg)
-        ])
-        # Clean up markdown code blocks if present
-        clean_content = response.content.replace("```json", "").replace("```", "").strip()
-        new_strategy = json.loads(clean_content)
+        new_strategy = llm_client.generate_json(
+            system_prompt=sys_msg,
+            user_prompt=user_msg,
+            provider=REFINE_PROVIDER,
+            model=REFINE_MODEL,
+            temperature=0.4
+        )
     except Exception as e:
         print(f"   ⚠️ Refiner Error: {e}")
         # Fallback: Just switch sources and reuse the original query
@@ -326,8 +314,6 @@ def synthesize_node(state: BrainState):
     print("✍️ [SYNTHESIZER] Writing Final Answer...")
     t0 = time.perf_counter()
     
-    synth_llm = ChatGroq(temperature=0, model_name=SYNTHESIZE_MODEL, api_key=GROQ_API_KEY)
-    
     # [FIX 1] Get the unified context bucket
     context_list = state.get("combined_context", [])
     
@@ -350,17 +336,20 @@ def synthesize_node(state: BrainState):
     {formatted_context}
     """
     
-    response = synth_llm.invoke([
-        SystemMessage(content=sys_msg),
-        HumanMessage(content=user_msg)
-    ])
+    response_content = llm_client.generate_text(
+        system_prompt=sys_msg,
+        user_prompt=user_msg,
+        provider=SYNTHESIZE_PROVIDER,
+        model=SYNTHESIZE_MODEL,
+        temperature=0.0
+    )
     
     duration = (time.perf_counter() - t0) * 1000
     
     recorder.log_event("LLM_SYNTHESIS", "SynthesizeNode", {
         "full_system_prompt": sys_msg,
         "full_user_prompt": user_msg,
-        "full_response": response.content
+        "full_response": response_content
     }, duration)
     
-    return {"final_answer": response.content}
+    return {"final_answer": response_content}
