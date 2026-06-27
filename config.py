@@ -1,9 +1,12 @@
 import os
 from dotenv import load_dotenv
+
+# Load main API environment variables
 load_dotenv(override=True)
+# Load model configuration environment variables
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.models"), override=True)
 
 # --- API KEYS ---
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")
 NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY")
 
@@ -14,46 +17,32 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 
 # --- MODEL CONFIGURATION ---
 
-# 1. Premise Model
-# PREMISE_MODEL = "llama-3.3-70b-versatile" 
-PREMISE_PROVIDER = "groq"
-PREMISE_MODEL = "openai/gpt-oss-120b"
+PREMISE_PROVIDER = os.getenv("PREMISE_PROVIDER", "nvidia")
+PREMISE_MODEL = os.getenv("PREMISE_MODEL", "meta/llama-3.3-70b-instruct")
 
-# 1. RETRIEVAL (Query Decomposer)
-QUERY_PROVIDER = "groq"
-QUERY_MODEL = "openai/gpt-oss-120b"
+QUERY_PROVIDER = os.getenv("QUERY_PROVIDER", "nvidia")
+QUERY_MODEL = os.getenv("QUERY_MODEL", "meta/llama-3.3-70b-instruct")
 
-# 2. AUDIT (Fact Checker)
-AUDIT_PROVIDER = "groq"
-AUDIT_MODEL = "openai/gpt-oss-120b"
-# AUDIT_MODEL = "llama-3.3-70b-versatile" 
+AUDIT_PROVIDER = os.getenv("AUDIT_PROVIDER", "nvidia")
+AUDIT_MODEL = os.getenv("AUDIT_MODEL", "meta/llama-3.3-70b-instruct")
 
-# 3. VERIFY (Search Quality)
-VERIFY_PROVIDER = "groq"
-VERIFY_MODEL = "openai/gpt-oss-120b"
-# VERIFY_MODEL = "llama-3.3-70b-versatile" 
+VERIFY_PROVIDER = os.getenv("VERIFY_PROVIDER", "nvidia")
+VERIFY_MODEL = os.getenv("VERIFY_MODEL", "meta/llama-3.3-70b-instruct")
 
-# 4. REFINE (Failed Search -> Search Strategy Refiner)
-REFINE_PROVIDER = "groq"
-REFINE_MODEL = "openai/gpt-oss-120b"
-# REFINE_MODEL = "llama-3.3-70b-versatile" 
+REFINE_PROVIDER = os.getenv("REFINE_PROVIDER", "nvidia")
+REFINE_MODEL = os.getenv("REFINE_MODEL", "meta/llama-3.3-70b-instruct")
 
-# 5. SCOUT (Web Researcher)
-SCOUT_PROVIDER = "groq"
-SCOUT_MODEL = "openai/gpt-oss-120b" 
-# SCOUT_MODEL = "llama-3.3-70b-versatile"
+SCOUT_PROVIDER = os.getenv("SCOUT_PROVIDER", "nvidia")
+SCOUT_MODEL = os.getenv("SCOUT_MODEL", "meta/llama-3.3-70b-instruct")
 
-# 6. SYNTHESIS (Final Answer Writer)
-SYNTHESIZE_PROVIDER = "groq"
-SYNTHESIZE_MODEL = "openai/gpt-oss-120b"
-# SYNTHESIZE_MODEL = "llama-3.3-70b-versatile"
+SYNTHESIZE_PROVIDER = os.getenv("SYNTHESIZE_PROVIDER", "nvidia")
+SYNTHESIZE_MODEL = os.getenv("SYNTHESIZE_MODEL", "meta/llama-3.3-70b-instruct")
 
-# 7. CURATOR (Pending Knowledge Base Builder)
-VECTOR_CURATOR_PROVIDER = "groq"
-VECTOR_CURATOR_MODEL = "openai/gpt-oss-120b"
-GRAPH_CURATOR_PROVIDER = "nvidia"
-GRAPH_CURATOR_MODEL = "qwen/qwen3-coder-480b-a35b-instruct"
-# CURATOR_MODEL = "llama-3.3-70b-versatile"
+VECTOR_CURATOR_PROVIDER = os.getenv("VECTOR_CURATOR_PROVIDER", "nvidia")
+VECTOR_CURATOR_MODEL = os.getenv("VECTOR_CURATOR_MODEL", "meta/llama-3.3-70b-instruct")
+
+GRAPH_CURATOR_PROVIDER = os.getenv("GRAPH_CURATOR_PROVIDER", "nvidia")
+GRAPH_CURATOR_MODEL = os.getenv("GRAPH_CURATOR_MODEL", "meta/llama-3.3-70b-instruct")
 
 # --- PATHS ---
 BM25_INDEX_PATH = "./models/bm25_index.pkl"
@@ -67,6 +56,8 @@ OLD_CHUNK_METADATA_PATH = "/Users/pranavpant/Desktop/code/RAG/models/chunk_metad
 SUPER_NODE_THRESHOLD = 50
 LOG_FILE_PATH = "./models/brain_activity.log"
 REPORTS_DIR = "./models/run_reports/new"  
+ENABLE_KNOWLEDGE_CURATION = os.getenv("ENABLE_KNOWLEDGE_CURATION", "True").lower() in ("true", "1", "yes")
+
 # --- FILTERS ---
 STOP_RELATIONS = {
     "is", "are", "am", "was", "were", 
@@ -80,12 +71,18 @@ STOP_NODES = {
 }
 
 # --- WEB SEARCH CONFIG ---
+TAVILY_SEARCH_DEPTH = os.getenv("TAVILY_SEARCH_DEPTH", "advanced")
+TAVILY_TOPIC = os.getenv("TAVILY_TOPIC", "general")
+TAVILY_MAX_RESULTS = int(os.getenv("TAVILY_MAX_RESULTS", "5"))
+TAVILY_INCLUDE_ANSWER = os.getenv("TAVILY_INCLUDE_ANSWER", "False").lower() in ("true", "1", "yes")
+TAVILY_INCLUDE_RAW_CONTENT = os.getenv("TAVILY_INCLUDE_RAW_CONTENT", "True").lower() in ("true", "1", "yes")
+
 SEARCH_CONFIG = {
-    "search_depth": "advanced",      # Deep search for quality
-    "topic": "general",              # General knowledge
-    "max_results": 5,                # Top 5 sources
-    "include_answer": False,          # Get the AI-generated summary
-    "include_raw_content": True,     # Get full page text
+    "search_depth": TAVILY_SEARCH_DEPTH,
+    "topic": TAVILY_TOPIC,
+    "max_results": TAVILY_MAX_RESULTS,
+    "include_answer": TAVILY_INCLUDE_ANSWER,
+    "include_raw_content": TAVILY_INCLUDE_RAW_CONTENT,
     "include_images": False,
     "chunks_per_source": 3
 }

@@ -1,126 +1,153 @@
+import os
 import json
 import time
 from typing import Dict, Any
 from openai import OpenAI
-from langchain_groq import ChatGroq
-from langchain_core.messages import SystemMessage, HumanMessage
 
-from config import GROQ_API_KEY, NVIDIA_API_KEY
+from config import NVIDIA_API_KEY
 
 class UnifiedLLMClient:
     def __init__(self):
-        # 1. Groq Client (LangChain)
-        self.groq_api_key = GROQ_API_KEY
-        
-        # 2. NVIDIA NIM Client (OpenAI SDK)
+        # NVIDIA NIM Client (OpenAI SDK)
         self.nvidia_client = OpenAI(
             api_key=NVIDIA_API_KEY,
             base_url="https://integrate.api.nvidia.com/v1"
         )
 
-    # ==========================================
-    # CORE ROUTING LOGIC
-    # ==========================================
     def generate_json(self, 
                       system_prompt: str, 
                       user_prompt: str, 
-                      provider: str = "groq", 
-                      model: str = "llama-3.3-70b-versatile", 
+                      provider: str = "nvidia", 
+                      model: str = "meta/llama-3.3-70b-instruct", 
                       temperature: float = 0.0,
                       retries: int = 2) -> Dict[str, Any]:
         """
-        Dynamically routes JSON generation. If the primary provider fails, 
-        it automatically switches to the backup provider.
+        Routes JSON generation. Always routes using NVIDIA NIM since Groq has been removed.
         """
-        # Set up the Primary and Backup targets
-        if provider.lower() == "nvidia":
-            primary_name, primary_func = "NVIDIA NIM", self._run_nvidia_json
-            backup_name, backup_func, b_model = "Groq", self._run_groq_json, "llama-3.3-70b-versatile"
-        elif provider.lower() == "groq":
-            primary_name, primary_func = "Groq", self._run_groq_json
-            backup_name, backup_func, b_model = "NVIDIA NIM", self._run_nvidia_json, "qwen/qwen3-coder-480b-a35b-instruct"
-        else:
-            primary_name, primary_func = provider.capitalize(), self._run_groq_json
-
-        # --- ATTEMPT 1: PRIMARY PROVIDER ---
         for attempt in range(retries):
             try:
-                return primary_func(system_prompt, user_prompt, model, temperature)
+                return self._run_nvidia_json(system_prompt, user_prompt, model, temperature)
             except Exception as e:
-                print(f"      [LLM] {primary_name} attempt {attempt + 1} failed: {e}")
+                print(f"      [LLM] NVIDIA NIM JSON generation attempt {attempt + 1} failed: {e}")
                 time.sleep(1)
-
-        # --- ATTEMPT 2: BACKUP PROVIDER ---
-        if 'backup_func' in locals():
-            print(f"      [LLM] 🔄 Switching to Backup Provider [{backup_name}] using model: {b_model}...")
-            try:
-                return backup_func(system_prompt, user_prompt, b_model, temperature)
-            except Exception as e:
-                print(f"      [LLM] ❌ Backup Provider [{backup_name}] also failed: {e}")
         return {}
 
     def generate_text(self, 
                       system_prompt: str, 
                       user_prompt: str, 
-                      provider: str = "groq",
-                      model: str = "llama-3.3-70b-versatile",
+                      provider: str = "nvidia",
+                      model: str = "meta/llama-3.3-70b-instruct",
                       temperature: float = 0.0,
                       retries: int = 1) -> str:
         """
-        Dynamically routes standard text generation (e.g., final answer synthesis).
+        Routes standard text generation. Always routes using NVIDIA NIM since Groq has been removed.
         """
-        if provider.lower() == "nvidia":
-            primary_name, primary_func = "NVIDIA NIM", self._run_nvidia_text
-            backup_name, backup_func, b_model = "Groq", self._run_groq_text, "llama-3.3-70b-versatile"
-        elif provider.lower() == "groq":
-            primary_name, primary_func = "Groq", self._run_groq_text
-            backup_name, backup_func, b_model = "NVIDIA NIM", self._run_nvidia_text, "qwen/qwen3-coder-480b-a35b-instruct"
-        else:
-            primary_name, primary_func = provider.capitalize(), self._run_groq_text
-
         for attempt in range(retries):
             try:
-                return primary_func(system_prompt, user_prompt, model, temperature)
+                return self._run_nvidia_text(system_prompt, user_prompt, model, temperature)
             except Exception as e:
-                print(f"      [LLM] {primary_name} attempt {attempt + 1} failed: {e}")
+                print(f"      [LLM] NVIDIA NIM Text generation attempt {attempt + 1} failed: {e}")
                 time.sleep(1)
-
-        if 'backup_func' in locals():
-            print(f"      [LLM] 🔄 Switching to Backup Provider [{backup_name}] using model: {b_model}...")
-            try:
-                return backup_func(system_prompt, user_prompt, b_model, temperature)
-            except Exception as e:
-                print(f"      [LLM] ❌ Backup Provider [{backup_name}] also failed: {e}")
         
-        return "System Error: All generation providers failed to process the request."
+        return "System Error: NVIDIA NIM text generation failed."
+
+    def generate_text_stream(self, 
+                             system_prompt: str, 
+                             user_prompt: str, 
+                             provider: str = "nvidia",
+                             model: str = "meta/llama-3.3-70b-instruct",
+                             temperature: float = 0.0,
+                             callback=None) -> str:
+        """
+        Streams standard text generation from NVIDIA NIM and executes a callback with each token.
+        """
+        try:
+            kwargs = {
+                "model": model,
+                "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+                "temperature": temperature,
+                "max_tokens": 4096,
+                "stream": True
+            }
+            if "120b" in model:
+                kwargs["extra_body"] = {"thinking": "medium"}
+                
+            res = self.nvidia_client.chat.completions.create(**kwargs)
+            
+            full_response = []
+            for chunk in res:
+                if not chunk.choices:
+                    continue
+                token = chunk.choices[0].delta.content or ""
+                if token:
+                    full_response.append(token)
+                    if callback:
+                        callback(token)
+            return "".join(full_response)
+        except Exception as e:
+            print(f"      [LLM] Streaming failed ({e}). Falling back to non-stream...")
+            return self.generate_text(system_prompt, user_prompt, provider, model, temperature)
 
     # ==========================================
-    # PRIVATE HELPER METHODS (The actual API calls)
+    # PRIVATE HELPER METHODS (NVIDIA NIM API calls)
     # ==========================================
-    def _run_groq_json(self, sys_prompt: str, user_prompt: str, model: str, temp: float) -> Dict:
-        llm = ChatGroq(temperature=temp, model_name=model, api_key=self.groq_api_key, model_kwargs={"response_format": {"type": "json_object"}})
-        res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=user_prompt)])
-        return json.loads(res.content)
-
     def _run_nvidia_json(self, sys_prompt: str, user_prompt: str, model: str, temp: float) -> Dict:
-        res = self.nvidia_client.chat.completions.create(
-            model=model,
-            messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": user_prompt}],
-            temperature=temp, max_tokens=2048, response_format={"type": "json_object"}
-        )
-        return json.loads(res.choices[0].message.content)
+        modified_sys = sys_prompt + "\n\nYou must respond ONLY with a valid JSON object."
+        content = None
+        
+        try:
+            kwargs = {
+                "model": model,
+                "messages": [{"role": "system", "content": modified_sys}, {"role": "user", "content": user_prompt}],
+                "temperature": temp,
+                "max_tokens": 4096,
+                "response_format": {"type": "json_object"}
+            }
+            if "120b" in model:
+                kwargs["extra_body"] = {"thinking": "medium"}
+                
+            res = self.nvidia_client.chat.completions.create(**kwargs)
+            content = res.choices[0].message.content
+        except Exception as e:
+            # Fallback: Retry without response_format if model or endpoint rejects it
+            print(f"      [LLM] Warning: response_format failed ({e}). Retrying without it...")
+            fallback_kwargs = {
+                "model": model,
+                "messages": [{"role": "system", "content": modified_sys}, {"role": "user", "content": user_prompt}],
+                "temperature": temp,
+                "max_tokens": 4096
+            }
+            if "120b" in model:
+                fallback_kwargs["extra_body"] = {"thinking": "medium"}
+                
+            res = self.nvidia_client.chat.completions.create(**fallback_kwargs)
+            content = res.choices[0].message.content
 
-    def _run_groq_text(self, sys_prompt: str, user_prompt: str, model: str, temp: float) -> str:
-        llm = ChatGroq(temperature=temp, model_name=model, api_key=self.groq_api_key)
-        res = llm.invoke([SystemMessage(content=sys_prompt), HumanMessage(content=user_prompt)])
-        return res.content
+        if not content:
+            print(f"      [LLM] ⚠️ EMPTY CONTENT RESPONSE: {res}")
+            raise ValueError("NVIDIA NIM returned empty or None content.")
+            
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            import re
+            # Find first { and last }
+            match = re.search(r"\{.*\}", content, re.DOTALL)
+            if match:
+                return json.loads(match.group(0))
+            raise ValueError(f"Failed to parse JSON from response content: {content}")
 
     def _run_nvidia_text(self, sys_prompt: str, user_prompt: str, model: str, temp: float) -> str:
-        res = self.nvidia_client.chat.completions.create(
-            model=model,
-            messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": user_prompt}],
-            temperature=temp, max_tokens=2048
-        )
+        kwargs = {
+            "model": model,
+            "messages": [{"role": "system", "content": sys_prompt}, {"role": "user", "content": user_prompt}],
+            "temperature": temp,
+            "max_tokens": 4096
+        }
+        if "120b" in model:
+            kwargs["extra_body"] = {"thinking": "medium"}
+            
+        res = self.nvidia_client.chat.completions.create(**kwargs)
         return res.choices[0].message.content
 
     # ==========================================
@@ -139,8 +166,6 @@ class UnifiedLLMClient:
     def rerank_passages(self, query: str, passages: list, model: str = "nv-rerank-qa-mistral-4b:1") -> list:
         """
         Calls NVIDIA reranking API.
-        passages: list of text strings.
-        Returns a list of dicts from 'rankings' which contain 'index' and 'logit'.
         """
         import requests
         headers = {

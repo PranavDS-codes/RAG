@@ -131,7 +131,8 @@ class TracedOmniRetriever(OmniRetriever):
         # 2. Log the high-level task generation
         recorder.log_event("QUERY_DECOMPOSITION", "QueryOptimizer", {
             "query": query, 
-            "tasks_generated": len(final_structure["tasks"])
+            "tasks_generated": len(final_structure["tasks"]),
+            "tasks": [t["sub_query"] for t in final_structure["tasks"]]
         }, duration)
         
         # 3. Log the results of each task

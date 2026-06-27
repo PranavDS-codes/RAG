@@ -1,10 +1,12 @@
 import time
 import json
+import threading
 from llm_client import llm_client
 
 from config import ( 
     AUDIT_PROVIDER, AUDIT_MODEL, SYNTHESIZE_PROVIDER, SYNTHESIZE_MODEL, 
-    VERIFY_PROVIDER, VERIFY_MODEL, REFINE_PROVIDER, REFINE_MODEL )
+    VERIFY_PROVIDER, VERIFY_MODEL, REFINE_PROVIDER, REFINE_MODEL,
+    ENABLE_KNOWLEDGE_CURATION )
 from state import BrainState
 from prompts import ( AUDIT_NODE_PROMPT, SYNTHESIZE_NODE_PROMPT, 
     VERIFY_NODE_PROMPT, REFINE_NODE_PROMPT )
@@ -248,7 +250,14 @@ def wiki_search_node(state: BrainState):
                 )
                 
                 wiki_facts.append(fact_block)
-                curator.curate(topic, res, source_type="wiki_librarian")
+                if ENABLE_KNOWLEDGE_CURATION:
+                    # Defer curation to a background thread to prevent blocking agent execution
+                    threading.Thread(
+                        target=curator.curate, 
+                        args=(topic, res), 
+                        kwargs={"source_type": "wiki_librarian"},
+                        daemon=True
+                    ).start()
         except Exception as e:
             print(f"   ⚠️ Wiki Error on '{topic}': {e}")
             
@@ -297,8 +306,15 @@ def web_search_node(state: BrainState):
                 
                 web_facts.append(fact_block)
                 
-                # Curate for the Knowledge Graph
-                curator.curate(topic, res, source_type="web_scout")
+                if ENABLE_KNOWLEDGE_CURATION:
+                    # Curate for the Knowledge Graph
+                    # Defer curation to a background thread to prevent blocking agent execution
+                    threading.Thread(
+                        target=curator.curate, 
+                        args=(topic, res), 
+                        kwargs={"source_type": "web_scout"},
+                        daemon=True
+                    ).start()
         except Exception as e:
             print(f"   ⚠️ Search Error on '{topic}': {e}")
             
@@ -336,12 +352,21 @@ def synthesize_node(state: BrainState):
     {formatted_context}
     """
     
-    response_content = llm_client.generate_text(
+    def token_callback(token):
+        print(token, end="", flush=True)
+        for cb in recorder.callbacks:
+            try:
+                cb({"type": "TOKEN", "data": token})
+            except Exception:
+                pass
+
+    response_content = llm_client.generate_text_stream(
         system_prompt=sys_msg,
         user_prompt=user_msg,
         provider=SYNTHESIZE_PROVIDER,
         model=SYNTHESIZE_MODEL,
-        temperature=0.0
+        temperature=0.0,
+        callback=token_callback
     )
     
     duration = (time.perf_counter() - t0) * 1000

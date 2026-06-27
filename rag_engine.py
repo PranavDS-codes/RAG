@@ -26,7 +26,7 @@ from config import (
 # ROBUST QUERY OPTIMIZER (AUTO-FIXING)
 # ==========================================
 class QueryOptimizer:
-    def __init__(self, provider="groq", model_name="llama-3.3-70b-versatile"):
+    def __init__(self, provider="nvidia", model_name="openai/gpt-oss-20b"):
         self.provider = provider
         self.model_name = model_name
 

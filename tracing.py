@@ -19,7 +19,14 @@ class DeepFlightRecorder:
     def __init__(self):
         self.current_run_id = None
         self.run_data = {}
+        self.callbacks = []
         if not os.path.exists(REPORTS_DIR): os.makedirs(REPORTS_DIR)
+
+    def register_callback(self, callback):
+        self.callbacks.append(callback)
+
+    def clear_callbacks(self):
+        self.callbacks = []
 
     def start_run(self, query):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -38,6 +45,12 @@ class DeepFlightRecorder:
             "data": copy.deepcopy(data) if isinstance(data, (dict, list)) else str(data)
         }
         self.run_data["trace_log"].append(entry)
+        # Notify SSE/WebSocket subscribers
+        for cb in self.callbacks:
+            try:
+                cb(entry)
+            except Exception:
+                pass
 
     def save_report(self):
         filename = f"{self.current_run_id}_deep_trace.json"

@@ -151,26 +151,13 @@ class WikiScout:
 class KnowledgeCurator:
     def __init__(self, pending_file=PENDING_KNOWLEDGE_PATH, 
                 graph_provider='nvidia', 
-                graph_model='qwen/qwen3-coder-480b-a35b-instruct', 
-                vector_provider='groq', 
-                vector_model='llama-3.3-70b-versatile'
+                graph_model='openai/gpt-oss-20b', 
+                vector_provider='nvidia', 
+                vector_model='openai/gpt-oss-20b'
                 ):
         self.pending_file = pending_file
         os.makedirs(os.path.dirname(self.pending_file), exist_ok=True)
         
-        # # 1. Groq Client (For Vector Chunks)
-        # self.groq_llm = ChatGroq(
-        #     temperature=0, 
-        #     model_name=groq_model, 
-        #     api_key=GROQ_API_KEY,
-        #     model_kwargs={"response_format": {"type": "json_object"}}
-        # )
-
-        # # 2. NVIDIA NIM Client (For Graph Extractions)
-        # self.nvidia_client = OpenAI(
-        #     api_key=NVIDIA_API_KEY,
-        #     base_url="https://integrate.api.nvidia.com/v1"
-        # )
         self.graph_provider = graph_provider
         self.graph_model = graph_model
         self.vector_provider = vector_provider
@@ -178,58 +165,74 @@ class KnowledgeCurator:
 
     def curate(self, query: str, scout_result: Dict, source_type: str = "web_scout"):
         """
-        Executes a dual-LLM curation: Vector chunks via Groq, Graph triples via NVIDIA.
+        Executes a dual-LLM curation in a loop over each source to reliably track URLs.
         """
         if scout_result.get("status") != "success":
             return
 
         print(f"   🧠 Curating Knowledge for [{query}]...")
         
-        # 1. Prepare Content
         sources = scout_result.get("curation_data", [])
-        combined_text = ""
+        
+        vector_chunks_all = []
+        graph_entities_all = []
+        graph_relationships_all = []
+
         for s in sources[:5]:
+            url = s.get("url") or "unknown"
             text = s.get("full_text") or s.get("raw_content") or s.get("snippet") or ""
-            combined_text += f"\n\nSource ({s.get('url')}):\n{text[:2000]}"
-            
-        content_payload = f"TOPIC: {query}\n\nCONTENT:\n{combined_text[:6000]}"
+            if not text.strip():
+                continue
+                
+            content_payload = f"TOPIC: {query}\nSOURCE URL: {url}\n\nCONTENT EXCERPT:\n{text[:2000]}"
 
-        vector_data = {}
-        graph_data = {}
+            # 1. Vector Chunking for this source
+            print(f"      ↳ Generating Vector Chunks from {url[:40]}...")
+            try:
+                v_data = llm_client.generate_json(
+                    system_prompt=VECTOR_CHUNK_CURATION_PROMPT,
+                    user_prompt=content_payload,
+                    provider=self.vector_provider,
+                    model=self.vector_model,
+                )
+                for chunk in v_data.get("chunks", []):
+                    if isinstance(chunk, dict):
+                        chunk["source_url"] = url
+                        vector_chunks_all.append(chunk)
+                    elif isinstance(chunk, str):
+                        vector_chunks_all.append({"text": chunk, "source_url": url, "topic_focus": "General Information"})
+            except Exception as e:
+                print(f"      ⚠️ Vector Curation Failed for {url[:40]}: {e}")
 
-        # 2. EXECUTE Vector Chunking
-        print("      ↳ Generating Vector Chunks (Groq)...")
-        try:
-            vector_data = llm_client.generate_json(
-                system_prompt=VECTOR_CHUNK_CURATION_PROMPT,
-                user_prompt=content_payload,
-                provider=self.vector_provider,
-                model=self.vector_model,
-            )
-        except Exception as e:
-            print(f"      ⚠️ Vector Curation Failed: {e}")
+            # 2. Graph Extraction for this source
+            print(f"      ↳ Extracting Graph Topology from {url[:40]}...")
+            try:
+                g_data = llm_client.generate_json(
+                    system_prompt=GRAPH_CURATION_PROMPT,
+                    user_prompt=content_payload,
+                    provider=self.graph_provider,
+                    model=self.graph_model,
+                )
+                for ent in g_data.get("entities", []):
+                    if isinstance(ent, dict):
+                        ent["source_url"] = url
+                        graph_entities_all.append(ent)
+                for rel in g_data.get("relationships", []):
+                    if isinstance(rel, dict):
+                        rel["source_url"] = url
+                        graph_relationships_all.append(rel)
+            except Exception as e:
+                print(f"      ⚠️ Graph Curation Failed for {url[:40]}: {e}")
 
-        # 3. EXECUTE NVIDIA (Graph Extraction)
-        print("      ↳ Extracting Graph Topology (NVIDIA NIM)...")
-        try:
-            graph_data = llm_client.generate_json(
-                system_prompt=GRAPH_CURATION_PROMPT,
-                user_prompt=content_payload,
-                provider=self.graph_provider,
-                model=self.graph_model,
-            )
-        except Exception as e:
-            print(f"      ⚠️ Graph Curation Failed: {e}")
-
-        # 4. Construct & Save JSONL Artifact
+        # Construct & Save JSONL Artifact
         final_artifact = {
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "original_query": query,
             "source_type": source_type,
-            "vector_chunks": vector_data.get("chunks", []),
+            "vector_chunks": vector_chunks_all,
             "graph_extractions": {
-                "entities": graph_data.get("entities", []),
-                "relationships": graph_data.get("relationships", [])
+                "entities": graph_entities_all,
+                "relationships": graph_relationships_all
             }
         }
         

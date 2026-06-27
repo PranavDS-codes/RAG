@@ -114,7 +114,7 @@ def calculate_hit_rate(retrieved_docs, ground_truth_title):
 # ==========================================
 
 class LLMJudge:
-    def __init__(self, groq_client=None, model="llama-3.3-70b-versatile"):
+    def __init__(self, groq_client=None, model="meta/llama-3.3-70b-instruct"):
         self.model = model
 
     def evaluate_faithfulness(self, context, answer):
@@ -314,8 +314,8 @@ class LLMJudge:
             res = llm_client.generate_json(
                 system_prompt="You are an expert evaluator.",
                 user_prompt=prompt,
-                primary_provider="groq",
-                groq_model=self.model,
+                provider="nvidia",
+                model=self.model,
                 temperature=0.0
             )
             return float(res.get("score", 0.0)), res.get("reason", "No reason provided")
@@ -330,7 +330,8 @@ class RAGEvaluator:
     def __init__(self, retriever_instance=None, generator_func=None, groq_client=None):
         self.retriever = retriever_instance
         self.generator = generator_func
-        self.judge = LLMJudge(groq_client) if groq_client else None
+        # Initialize LLMJudge regardless of groq_client availability since it runs on NVIDIA NIM now
+        self.judge = LLMJudge(groq_client)
         
     def run_experiment(self, 
                        dataset, 
@@ -531,7 +532,7 @@ class RAGEvaluator:
         if self.judge: 
             self.judge.model = judge_model
         else:
-            print("⚠️ No Judge initialized! Pass a groq_client to RAGEvaluator.")
+            print("⚠️ No Judge initialized!")
             return df, {}
 
         # 2. Setup Loop

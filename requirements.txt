@@ -10,7 +10,6 @@ datasets
 # RAG Framework & Orchestration
 langchain
 langgraph
-langchain-groq
 langchain-community
 langchain-core
 langchain-text-splitters

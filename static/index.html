@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cognitive RAG - Mission Control Console</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Marked Markdown Parser -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  
+  <style>
+    :root {
+      --bg-dark: #070a13;
+      --bg-sidebar: #0b0f1d;
+      --card-bg: rgba(16, 22, 42, 0.6);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-glow: rgba(6, 182, 212, 0.15);
+      
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dark: #64748b;
+      
+      --accent: #06b6d4;      /* Cyan */
+      --accent-glow: rgba(6, 182, 212, 0.4);
+      --success: #10b981;     /* Emerald green */
+      --success-glow: rgba(16, 185, 129, 0.2);
+      --error: #f43f5e;       /* Rose red */
+      --error-glow: rgba(244, 63, 94, 0.2);
+      --warning: #f59e0b;     /* Amber */
+      --warning-glow: rgba(245, 158, 11, 0.2);
+      --violet: #8b5cf6;
+      
+      --font-sans: 'Outfit', sans-serif;
+      --font-mono: 'Fira Code', monospace;
+      
+      --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+    }
+
+    /* Scrollbar Styling */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    /* Sidebar Styling */
+    aside {
+      width: 280px;
+      background-color: var(--bg-sidebar);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      padding: 24px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent), var(--violet));
+      box-shadow: 0 0 15px var(--accent-glow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .brand-title {
+      font-weight: 600;
+      font-size: 18px;
+      letter-spacing: 0.5px;
+      background: linear-gradient(to right, #ffffff, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .sidebar-actions {
+      padding: 16px;
+    }
+
+    .new-chat-btn {
+      width: 100%;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .new-chat-btn:hover {
+      background: rgba(6, 182, 212, 0.1);
+      border-color: var(--accent);
+      box-shadow: 0 0 12px var(--border-glow);
+    }
+
+    .history-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 12px;
+    }
+
+    .history-item {
+      padding: 12px;
+      margin-bottom: 4px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      border: 1px solid transparent;
+      transition: var(--transition);
+    }
+
+    .history-item:hover {
+      background: rgba(255, 255, 255, 0.02);
+      border-color: var(--border-color);
+    }
+
+    .history-item.active {
+      background: rgba(6, 182, 212, 0.05);
+      border-color: rgba(6, 182, 212, 0.2);
+    }
+
+    .history-query {
+      font-size: 14px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .history-meta {
+      font-size: 11px;
+      color: var(--text-dark);
+      font-family: var(--font-mono);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* Main Workspace Layout */
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      height: 72px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      background: rgba(7, 10, 19, 0.8);
+      backdrop-filter: blur(12px);
+      z-index: 10;
+    }
+
+    .header-nav {
+      display: flex;
+      gap: 8px;
+    }
+
+    .nav-tab {
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: var(--transition);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .nav-tab:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .nav-tab.active {
+      color: var(--accent);
+      background: rgba(6, 182, 212, 0.08);
+    }
+
+    /* Chat Container */
+    .workspace-pane {
+      flex: 1;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .workspace-pane.active {
+      display: flex;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .message {
+      display: flex;
+      gap: 16px;
+      max-width: 900px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .message.user {
+      justify-content: flex-end;
+    }
+
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .avatar.system {
+      background: rgba(6, 182, 212, 0.1);
+      border: 1px solid rgba(6, 182, 212, 0.2);
+      color: var(--accent);
+    }
+
+    .avatar.user {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+    }
+
+    .bubble {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-width: calc(100% - 52px);
+    }
+
+    .user .bubble {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      padding: 16px 20px;
+      border-radius: 12px 12px 0 12px;
+      max-width: 600px;
+      flex: initial;
+    }
+
+    .answer-text {
+      line-height: 1.6;
+      font-size: 15px;
+      color: #e2e8f0;
+    }
+
+    .answer-text p {
+      margin-bottom: 12px;
+    }
+    .answer-text p:last-child {
+      margin-bottom: 0;
+    }
+
+    .answer-text h3 {
+      font-size: 16px;
+      margin: 16px 0 8px 0;
+      color: var(--accent);
+    }
+
+    .answer-text ul, .answer-text ol {
+      margin: 8px 0 16px 24px;
+    }
+
+    .answer-text li {
+      margin-bottom: 6px;
+    }
+
+    .answer-text pre {
+      background: rgba(0, 0, 0, 0.4);
+      padding: 12px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--border-color);
+    }
+
+    .answer-text table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+      text-align: left;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+      background: rgba(30, 41, 59, 0.4);
+    }
+
+    .answer-text th {
+      background: rgba(15, 23, 42, 0.8);
+      color: var(--accent);
+      font-weight: 600;
+      padding: 10px 14px;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .answer-text td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border-color);
+      color: #cbd5e1;
+    }
+
+    .answer-text tr:last-child td {
+      border-bottom: none;
+    }
+
+    .answer-text tr:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    /* Cognitive Stepper Accordion */
+    .cognitive-accordion {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      overflow: hidden;
+      transition: var(--transition);
+    }
+
+    .cognitive-accordion:hover {
+      border-color: rgba(6, 182, 212, 0.2);
+    }
+
+    .accordion-trigger {
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.01);
+      user-select: none;
+    }
+
+    .accordion-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      letter-spacing: 0.5px;
+    }
+
+    .accordion-status {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .live-timer {
+      font-size: 12px;
+      font-family: var(--font-mono);
+      color: var(--text-dark);
+    }
+
+    .accordion-content {
+      display: none;
+      border-top: 1px solid var(--border-color);
+      background: rgba(0, 0, 0, 0.15);
+    }
+
+    .accordion-content.open {
+      display: block;
+    }
+
+    /* Tabs inside Thought Accordion */
+    .thought-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-color);
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    .thought-tab {
+      padding: 10px 16px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: var(--transition);
+      font-family: var(--font-mono);
+    }
+
+    .thought-tab:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.01);
+    }
+
+    .thought-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      background: rgba(6, 182, 212, 0.03);
+    }
+
+    .thought-panel {
+      display: none;
+      padding: 16px 20px;
+      max-height: 350px;
+      overflow-y: auto;
+    }
+
+    .thought-panel.active {
+      display: block;
+    }
+
+    /* Pipeline Step Details Visuals */
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .step-log-item {
+      display: flex;
+      gap: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .step-log-time {
+      font-family: var(--font-mono);
+      color: var(--text-dark);
+      width: 70px;
+      flex-shrink: 0;
+    }
+
+    .step-log-content {
+      flex: 1;
+    }
+
+    .step-log-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      margin-right: 8px;
+    }
+
+    .badge-info { background: rgba(6, 182, 212, 0.1); color: var(--accent); }
+    .badge-success { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+    .badge-error { background: rgba(244, 63, 94, 0.1); color: var(--error); }
+    .badge-warning { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+
+    /* Metadata grids and lists */
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .meta-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 10px;
+    }
+
+    .meta-card-label {
+      font-size: 11px;
+      color: var(--text-dark);
+      text-transform: uppercase;
+      font-family: var(--font-mono);
+    }
+
+    .meta-card-value {
+      font-size: 14px;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+
+    .tag-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .tag {
+      font-size: 11px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+    }
+
+    /* Trace Details Download area */
+    .thought-footer {
+      padding: 10px 20px;
+      border-top: 1px solid var(--border-color);
+      background: rgba(0, 0, 0, 0.3);
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+    }
+
+    .download-trace-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: var(--transition);
+    }
+
+    .download-trace-btn:hover {
+      color: var(--accent);
+    }
+
+    /* Input panel styling */
+    .input-container {
+      padding: 24px 32px;
+      background: linear-gradient(to top, var(--bg-dark), transparent);
+    }
+
+    .input-box {
+      max-width: 900px;
+      width: 100%;
+      margin: 0 auto;
+      background: rgba(16, 22, 42, 0.9);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      transition: var(--transition);
+    }
+
+    .input-box:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 20px var(--border-glow);
+    }
+
+    .input-box input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      font-size: 15px;
+    }
+
+    .input-box input::placeholder {
+      color: var(--text-dark);
+    }
+
+    .send-btn {
+      background: var(--accent);
+      color: var(--bg-dark);
+      border: none;
+      border-radius: 8px;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .send-btn:hover {
+      background: #08d9ff;
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+
+    /* Empty state */
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      color: var(--text-muted);
+      text-align: center;
+      max-width: 450px;
+      margin: 0 auto;
+    }
+
+    .empty-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 16px;
+      background: rgba(6, 182, 212, 0.05);
+      border: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    /* Curation workspace panel */
+    .curation-workspace {
+      padding: 32px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .curation-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 24px;
+      background: linear-gradient(to right, #fff, var(--text-muted));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .curation-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    .curation-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      transition: var(--transition);
+    }
+
+    .curation-card:hover {
+      border-color: rgba(6, 182, 212, 0.2);
+    }
+
+    .curation-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .curation-source {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      padding: 2px 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      color: var(--accent);
+    }
+
+    .curation-time {
+      font-size: 12px;
+      color: var(--text-dark);
+      font-family: var(--font-mono);
+    }
+
+    .curation-query {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .curation-divider {
+      height: 1px;
+      background: var(--border-color);
+    }
+
+    .curation-section-title {
+      font-size: 11px;
+      color: var(--text-dark);
+      text-transform: uppercase;
+      font-family: var(--font-mono);
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    .curation-items-list {
+      max-height: 120px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .curation-item {
+      font-size: 12px;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+    }
+    
+    .curation-item-label {
+      font-weight: 600;
+      color: var(--violet);
+      margin-bottom: 2px;
+    }
+
+    .pulsing-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--accent);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(6, 182, 212, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(6, 182, 212, 0); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside>
+    <div class="brand">
+      <div class="brand-logo">
+        <i data-lucide="terminal" style="width: 16px; height: 16px; color: #070a13;"></i>
+      </div>
+      <div class="brand-title">Cognitive RAG</div>
+    </div>
+    
+    <div class="sidebar-actions">
+      <button class="new-chat-btn" onclick="startNewChat()">
+        <i data-lucide="plus" style="width: 16px; height: 16px;"></i>
+        New Analysis
+      </button>
+    </div>
+    
+    <div class="history-list" id="historyList">
+      <!-- Loaded dynamically -->
+    </div>
+  </aside>
+
+  <!-- Workspace Space -->
+  <main>
+    <header>
+      <div class="header-nav">
+        <div class="nav-tab active" onclick="switchPane(this, 'chatPane')">
+          <i data-lucide="message-square" style="width: 16px; height: 16px;"></i>
+          Mission Console
+        </div>
+        <div class="nav-tab" onclick="switchPane(this, 'curationPane')">
+          <i data-lucide="database" style="width: 16px; height: 16px;"></i>
+          Knowledge Base (Curation)
+        </div>
+      </div>
+      
+      <div id="connectionStatus" style="font-size: 12px; color: var(--success); display: flex; align-items: center; gap: 8px;">
+        <div class="pulsing-dot" style="background-color: var(--success); box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);"></div>
+        Systems Active
+      </div>
+    </header>
+
+    <!-- Chat Pane -->
+    <div class="workspace-pane active" id="chatPane">
+      <div class="chat-messages" id="chatMessages">
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">
+            <i data-lucide="cpu" style="width: 32px; height: 32px;"></i>
+          </div>
+          <h2>System Awaiting Commands</h2>
+          <p>Submit a complex research query to engage the hybrid vector and graph database engines. The agent's cognitive pipeline will trace steps here.</p>
+        </div>
+      </div>
+      
+      <div class="input-container">
+        <div class="input-box">
+          <input type="text" id="userInput" placeholder="Ask anything Beyonce collaborated with, or Renaissance World Tour themes..." onkeydown="handleInputKeydown(event)">
+          <button class="send-btn" onclick="submitQuery()">
+            <i data-lucide="arrow-right" style="width: 18px; height: 18px;"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Curation Workspace Pane -->
+    <div class="workspace-pane" id="curationPane">
+      <div class="curation-workspace">
+        <div class="curation-title">Pending Knowledge Workspace</div>
+        <div class="curation-grid" id="curationGrid">
+          <!-- Loaded dynamically -->
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    let activeRunId = null;
+    let eventSource = null;
+
+    // Load past search history
+    async function loadHistory() {
+      try {
+        const response = await fetch('/api/history');
+        const history = await response.json();
+        const historyList = document.getElementById('historyList');
+        historyList.innerHTML = '';
+        
+        history.forEach(item => {
+          const div = document.createElement('div');
+          div.className = `history-item ${activeRunId === item.run_id ? 'active' : ''}`;
+          div.onclick = () => loadTraceReport(item.run_id, item.query);
+          
+          // Format date/time
+          let formattedTime = item.timestamp;
+          if (item.timestamp && item.timestamp.includes('_')) {
+            const parts = item.timestamp.split('_');
+            const d = parts[0];
+            const t = parts[1];
+            formattedTime = `${d.substring(4,6)}/${d.substring(6,8)} ${t.substring(0,2)}:${t.substring(2,4)}`;
+          }
+
+          div.innerHTML = `
+            <div class="history-query">${item.query}</div>
+            <div class="history-meta">
+              <span>${item.run_id.substring(0, 14)}...</span>
+              <span>${formattedTime}</span>
+            </div>
+          `;
+          historyList.appendChild(div);
+        });
+      } catch (e) {
+        console.error("Failed to load history list", e);
+      }
+    }
+
+    // Load pending knowledge
+    async function loadPendingCuration() {
+      try {
+        const response = await fetch('/api/curation/pending');
+        const items = await response.json();
+        const grid = document.getElementById('curationGrid');
+        grid.innerHTML = '';
+        
+        if (items.length === 0) {
+          grid.innerHTML = `
+            <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-dark);">
+              <i data-lucide="inbox" style="width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.5;"></i>
+              <p>No knowledge artifacts currently pending verification.</p>
+            </div>
+          `;
+          lucide.createIcons();
+          return;
+        }
+
+        items.forEach(item => {
+          const card = document.createElement('div');
+          card.className = 'curation-card';
+          
+          let vectorCount = item.vector_chunks ? item.vector_chunks.length : 0;
+          let entitiesCount = item.graph_extractions?.entities ? item.graph_extractions.entities.length : 0;
+          let relationsCount = item.graph_extractions?.relationships ? item.graph_extractions.relationships.length : 0;
+
+          card.innerHTML = `
+            <div class="curation-card-header">
+              <span class="curation-source">${item.source_type || 'web'}</span>
+              <span class="curation-time">${item.timestamp || 'N/A'}</span>
+            </div>
+            <div class="curation-query">${item.original_query}</div>
+            <div class="curation-divider"></div>
+            
+            <div>
+              <div class="curation-section-title">Vector Chunks (${vectorCount})</div>
+              <div class="curation-items-list">
+                ${(item.vector_chunks || []).map(c => {
+                  let text = typeof c === 'string' ? c : (c.text || c.content || JSON.stringify(c));
+                  let url = typeof c === 'object' && c.source_url ? c.source_url : '';
+                  let urlHtml = url ? `<a href="${url}" target="_blank" style="color: var(--accent); text-decoration: none; display: block; font-size: 10px; margin-top: 4px; font-family: var(--font-mono);">🔗 Source Link</a>` : '';
+                  return `<div class="curation-item">${text.substring(0, 80)}...${urlHtml}</div>`;
+                }).join('') || '<div class="curation-item" style="color: var(--text-dark);">None</div>'}
+              </div>
+            </div>
+
+            <div>
+              <div class="curation-section-title">Graph Triples (${relationsCount})</div>
+              <div class="curation-items-list">
+                ${(item.graph_extractions?.relationships || []).map(r => {
+                  let urlHtml = r.source_url ? `<a href="${r.source_url}" target="_blank" style="color: var(--accent); text-decoration: none; display: block; font-size: 10px; margin-top: 4px; font-family: var(--font-mono);">🔗 Source Link</a>` : '';
+                  return `
+                    <div class="curation-item">
+                      <span class="curation-item-label">[${r.relation_type || r.type || 'RELATED'}]</span>
+                      ${r.source_entity || r.source || 'Unknown'} → ${r.target_entity || r.target || 'Unknown'}
+                      ${urlHtml}
+                    </div>
+                  `;
+                }).join('') || '<div class="curation-item" style="color: var(--text-dark);">None</div>'}
+              </div>
+            </div>
+          `;
+          grid.appendChild(card);
+        });
+        lucide.createIcons();
+      } catch (e) {
+        console.error("Failed to load curation artifacts", e);
+      }
+    }
+
+    // Switch between panels
+    function switchPane(element, paneId) {
+      document.querySelectorAll('.workspace-pane').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+      
+      document.getElementById(paneId).classList.add('active');
+      if (element) element.classList.add('active');
+      
+      if (paneId === 'curationPane') {
+        loadPendingCuration();
+      }
+    }
+
+    // Handle user enter key
+    function handleInputKeydown(e) {
+      if (e.key === 'Enter') {
+        submitQuery();
+      }
+    }
+
+    function startNewChat() {
+      document.getElementById('userInput').value = '';
+      const messages = document.getElementById('chatMessages');
+      messages.innerHTML = `
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">
+            <i data-lucide="cpu" style="width: 32px; height: 32px;"></i>
+          </div>
+          <h2>System Awaiting Commands</h2>
+          <p>Submit a complex research query to engage the hybrid vector and graph database engines. The agent's cognitive pipeline will trace steps here.</p>
+        </div>
+      `;
+      activeRunId = null;
+      loadHistory();
+      lucide.createIcons();
+    }
+
+    // Submits the query via SSE
+    function submitQuery() {
+      const input = document.getElementById('userInput');
+      const query = input.value.trim();
+      if (!query) return;
+
+      input.value = '';
+      
+      // Clear empty state
+      const emptyState = document.getElementById('emptyState');
+      if (emptyState) emptyState.remove();
+
+      const chatMessages = document.getElementById('chatMessages');
+
+      // 1. Add User message
+      const userMsgDiv = document.createElement('div');
+      userMsgDiv.className = 'message user';
+      userMsgDiv.innerHTML = `
+        <div class="bubble">${query}</div>
+        <div class="avatar user"><i data-lucide="user" style="width: 18px; height: 18px;"></i></div>
+      `;
+      chatMessages.appendChild(userMsgDiv);
+      lucide.createIcons();
+
+      // 2. Add System message placeholder
+      const sysMsgDiv = document.createElement('div');
+      sysMsgDiv.className = 'message system';
+      
+      const sessionId = "run_" + Date.now();
+      
+      sysMsgDiv.innerHTML = `
+        <div class="avatar system"><i data-lucide="bot" style="width: 18px; height: 18px;"></i></div>
+        <div class="bubble">
+          <!-- Accordion -->
+          <div class="cognitive-accordion">
+            <div class="accordion-trigger" onclick="toggleAccordion('${sessionId}')">
+              <span class="accordion-title">
+                <i data-lucide="terminal" style="width: 14px; height: 14px; margin-right: 4px;"></i>
+                COGNITIVE PIPELINE
+              </span>
+              <div class="accordion-status">
+                <span class="live-timer" id="timer_${sessionId}">0.0s</span>
+                <span id="dot_${sessionId}" class="pulsing-dot" style="background-color: var(--accent); box-shadow: 0 0 10px var(--accent);"></span>
+              </div>
+            </div>
+            
+            <div class="accordion-content open" id="content_${sessionId}">
+              <div class="thought-tabs">
+                <div class="thought-tab active" id="tab_understand_${sessionId}" onclick="switchThoughtTab('${sessionId}', 'understand')">Understanding</div>
+                <div class="thought-tab" id="tab_retrieve_${sessionId}" onclick="switchThoughtTab('${sessionId}', 'retrieve')">Retrieval</div>
+                <div class="thought-tab" id="tab_audit_${sessionId}" onclick="switchThoughtTab('${sessionId}', 'audit')">Audit & Search</div>
+              </div>
+              
+              <!-- Tab Panels -->
+              <div class="thought-panel active" id="panel_understand_${sessionId}">
+                <div class="timeline" id="log_understand_${sessionId}"></div>
+              </div>
+              
+              <div class="thought-panel" id="panel_retrieve_${sessionId}">
+                <div class="timeline" id="log_retrieve_${sessionId}"></div>
+              </div>
+              
+              <div class="thought-panel" id="panel_audit_${sessionId}">
+                <div class="timeline" id="log_audit_${sessionId}"></div>
+              </div>
+
+              <div class="thought-footer">
+                <button class="download-trace-btn" style="opacity: 0.5; pointer-events: none;" id="dl_btn_${sessionId}">
+                  <i data-lucide="download" style="width: 12px; height: 12px;"></i>
+                  Download JSON Trace
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Final text response -->
+          <div class="answer-text" id="answer_${sessionId}">
+            <span style="color: var(--text-dark); font-style: italic;">Engaging knowledge bases...</span>
+          </div>
+        </div>
+      `;
+      chatMessages.appendChild(sysMsgDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      lucide.createIcons();
+
+      // Start live timer
+      const startTime = Date.now();
+      let timerInterval = setInterval(() => {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        const timerEl = document.getElementById(`timer_${sessionId}`);
+        if (timerEl) {
+          timerEl.innerText = `${elapsed}s`;
+        } else {
+          clearInterval(timerInterval);
+        }
+      }, 100);
+
+      // Connect to SSE Endpoint
+      if (eventSource) eventSource.close();
+      
+      eventSource = new EventSource(`/api/query/stream?query=${encodeURIComponent(query)}&t=${Date.now()}`);
+      
+      eventSource.onmessage = (event) => {
+        const payload = JSON.parse(event.data);
+        console.log("Stream Event: ", payload);
+
+        if (payload.event === "run_start") {
+          activeRunId = payload.run_id;
+        }
+
+        if (payload.event === "step_update") {
+          const trace = payload.data;
+          if (trace && trace.type === "TOKEN") {
+            // Stop the clock when streaming starts!
+            if (timerInterval) {
+              clearInterval(timerInterval);
+              timerInterval = null;
+            }
+            
+            const answerBox = document.getElementById(`answer_${sessionId}`);
+            if (answerBox) {
+              if (answerBox.innerHTML.includes("Engaging knowledge bases...") || answerBox.innerHTML.includes("Loading compiled answer...")) {
+                answerBox.innerHTML = "";
+              }
+              const tokenSpan = document.createElement('span');
+              tokenSpan.innerText = trace.data;
+              answerBox.appendChild(tokenSpan);
+            }
+          } else {
+            renderTraceStep(sessionId, trace);
+          }
+        }
+
+        if (payload.event === "run_complete") {
+          clearInterval(timerInterval);
+          document.getElementById(`dot_${sessionId}`).style.backgroundColor = 'var(--success)';
+          document.getElementById(`dot_${sessionId}`).style.boxShadow = '0 0 10px var(--success)';
+          
+          // Render final answer using markdown
+          const answerBox = document.getElementById(`answer_${sessionId}`);
+          answerBox.innerHTML = marked.parse(payload.final_answer);
+          
+          // Enable download button
+          const dlBtn = document.getElementById(`dl_btn_${sessionId}`);
+          if (dlBtn) {
+            dlBtn.style.opacity = '1';
+            dlBtn.style.pointerEvents = 'auto';
+            dlBtn.onclick = () => window.open(`/api/traces/${payload.run_id}`, '_blank');
+          }
+          
+          eventSource.close();
+          loadHistory();
+        }
+
+        if (payload.event === "run_error") {
+          clearInterval(timerInterval);
+          document.getElementById(`dot_${sessionId}`).style.backgroundColor = 'var(--error)';
+          document.getElementById(`dot_${sessionId}`).style.boxShadow = '0 0 10px var(--error)';
+          
+          const answerBox = document.getElementById(`answer_${sessionId}`);
+          answerBox.innerHTML = `<span style="color: var(--error)">Error executing command: ${payload.error}</span>`;
+          
+          eventSource.close();
+        }
+
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      };
+
+      eventSource.onerror = (err) => {
+        clearInterval(timerInterval);
+        console.error("EventSource failed: ", err);
+        eventSource.close();
+      };
+    }
+
+    // Toggle cognitive accordion
+    function toggleAccordion(id) {
+      document.getElementById(`content_${id}`).classList.toggle('open');
+    }
+
+    // Switch tabs inside accordion
+    function switchThoughtTab(sessionId, tabName) {
+      const accordion = document.getElementById(`content_${sessionId}`);
+      
+      accordion.querySelectorAll('.thought-tab').forEach(el => el.classList.remove('active'));
+      accordion.querySelectorAll('.thought-panel').forEach(el => el.classList.remove('active'));
+      
+      document.getElementById(`tab_${tabName}_${sessionId}`).classList.add('active');
+      document.getElementById(`panel_${tabName}_${sessionId}`).classList.add('active');
+    }
+
+    // Format timestamps for traces
+    function getFormattedTime() {
+      const now = new Date();
+      return now.toTimeString().split(' ')[0];
+    }
+
+    // Map a single trace step data to the correct Tab Log
+    function renderTraceStep(sessionId, trace) {
+      const type = trace.type;
+      const component = trace.component;
+      const data = trace.data;
+      const duration = trace.duration_ms;
+
+      let targetTab = 'understand';
+      let badgeStyle = 'badge-info';
+      let title = component;
+      let logHtml = '';
+
+      // Determine where the log belongs based on event type
+      if (type === "QUERY_DECOMPOSITION") {
+        targetTab = 'understand';
+        badgeStyle = 'badge-info';
+        title = "Query Optimizer";
+        
+        let subQueries = data.tasks || [];
+        logHtml = `
+          <div class="step-log-item">
+            <span class="step-log-time">${getFormattedTime()}</span>
+            <div class="step-log-content">
+              <span class="step-log-badge ${badgeStyle}">OPTIMIZE</span>
+              <strong>Decomposed Query into ${subQueries.length} Tasks:</strong>
+              <div class="tag-container">
+                ${subQueries.map(q => `<span class="tag">Q: ${q.sub_query || q}</span>`).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      } 
+      else if (type === "SEARCH_VECTOR" || type === "SEARCH_BM25" || type === "SEARCH_GRAPH" || type === "RETRIEVAL_RESULTS") {
+        targetTab = 'retrieve';
+        badgeStyle = 'badge-success';
+        
+        if (type === "RETRIEVAL_RESULTS") {
+          let hits = data || [];
+          logHtml = `
+            <div class="step-log-item">
+              <span class="step-log-time">${getFormattedTime()}</span>
+              <div class="step-log-content">
+                <span class="step-log-badge ${badgeStyle}">MERGED</span>
+                <strong>Reranked Top ${hits.length} Context Passages:</strong>
+                <div class="meta-grid">
+                  ${hits.map((h, i) => `
+                    <div class="meta-card">
+                      <div class="meta-card-label">Result #${i+1} (Score: ${h.score?.toFixed(3) || 'N/A'})</div>
+                      <div style="font-size:12px; margin-top:4px; font-family: var(--font-mono); color:var(--text-muted);">
+                        Source: ${h.sources?.join(' + ') || 'Vector'}
+                      </div>
+                      <p style="font-size:11px; margin-top:6px; color:var(--text-dark); max-height:60px; overflow:hidden;">
+                        ${h.data ? h.data.substring(0, 100) : ''}...
+                      </p>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+          `;
+        } else {
+          logHtml = `
+            <div class="step-log-item">
+              <span class="step-log-time">${getFormattedTime()}</span>
+              <div class="step-log-content">
+                <span class="step-log-badge badge-info">${type.replace('SEARCH_', '')}</span>
+                <strong>Scanning: ${title}</strong>
+                <div style="font-size:12px; color: var(--text-muted); margin-top:4px;">
+                  Ran lookup in ${duration}ms. Gathered ${data.hit_count || 0} candidate chunks.
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      }
+      else if (type === "NODE_OUTPUT" && component === "audit_node") {
+        targetTab = 'audit';
+        const isSufficient = data.gap_analysis?.sufficient;
+        badgeStyle = isSufficient ? 'badge-success' : 'badge-warning';
+        
+        logHtml = `
+          <div class="step-log-item">
+            <span class="step-log-time">${getFormattedTime()}</span>
+            <div class="step-log-content">
+              <span class="step-log-badge ${badgeStyle}">AUDIT</span>
+              <strong>Self-Audit Decision:</strong>
+              <div class="meta-grid">
+                <div class="meta-card">
+                  <div class="meta-card-label">Sufficient Data?</div>
+                  <div class="meta-card-value" style="color: ${isSufficient ? 'var(--success)' : 'var(--warning)'}">
+                    ${isSufficient ? 'YES' : 'NO (Triggering Search)'}
+                  </div>
+                </div>
+                <div class="meta-card">
+                  <div class="meta-card-label">Routing Decision</div>
+                  <div class="meta-card-value">${data.gap_analysis?.routing_decision || 'N/A'}</div>
+                </div>
+              </div>
+              <p style="font-size:12px; color:var(--text-muted); margin-top:8px;">
+                <strong>Reasoning:</strong> ${data.gap_analysis?.reasoning || 'No details provided.'}
+              </p>
+            </div>
+          </div>
+        `;
+      }
+      else if (type === "NODE_OUTPUT" && component === "verify_node") {
+        targetTab = 'audit';
+        const isSufficient = data.gap_analysis?.sufficient;
+        badgeStyle = isSufficient ? 'badge-success' : 'badge-warning';
+        
+        logHtml = `
+          <div class="step-log-item">
+            <span class="step-log-time">${getFormattedTime()}</span>
+            <div class="step-log-content">
+              <span class="step-log-badge ${badgeStyle}">VERIFY</span>
+              <strong>Scout Verification check:</strong>
+              <div class="meta-grid">
+                <div class="meta-card">
+                  <div class="meta-card-label">Sufficient to Answer?</div>
+                  <div class="meta-card-value" style="color: ${isSufficient ? 'var(--success)' : 'var(--warning)'}">
+                    ${isSufficient ? 'YES' : 'NO (Refining Loop)'}
+                  </div>
+                </div>
+              </div>
+              <p style="font-size:12px; color:var(--text-muted); margin-top:8px;">
+                <strong>Reasoning:</strong> ${data.gap_analysis?.reasoning || 'No details provided.'}
+              </p>
+            </div>
+          </div>
+        `;
+      }
+      else if (component === "refine_node") {
+        targetTab = 'audit';
+        badgeStyle = 'badge-warning';
+        logHtml = `
+          <div class="step-log-item">
+            <span class="step-log-time">${getFormattedTime()}</span>
+            <div class="step-log-content">
+              <span class="step-log-badge ${badgeStyle}">REFINE</span>
+              <strong>Refining Search Strategies:</strong>
+              <p style="font-size:12px; color:var(--text-muted); margin-top:4px;">
+                ${data.strategy || 'Adapting query keywords for web scout.'}
+              </p>
+            </div>
+          </div>
+        `;
+      }
+      else if (type === "WEB_SEARCH_RAW" || type === "WIKI_SEARCH_RAW") {
+        targetTab = 'audit';
+        badgeStyle = 'badge-info';
+        
+        let urlCount = data.curation_data ? data.curation_data.length : 0;
+        logHtml = `
+          <div class="step-log-item">
+            <span class="step-log-time">${getFormattedTime()}</span>
+            <div class="step-log-content">
+              <span class="step-log-badge ${badgeStyle}">SCOUT</span>
+              <strong>Scraped ${urlCount} External Pages via Tavily/Wiki:</strong>
+              <div class="meta-grid" style="margin-top:6px;">
+                ${(data.curation_data || []).slice(0, 3).map(c => `
+                  <div class="meta-card" style="padding: 8px;">
+                    <div style="font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                      ${c.title || 'Source'}
+                    </div>
+                    <a href="${c.url}" target="_blank" style="font-size:10px; color: var(--accent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;">
+                      ${c.url}
+                    </a>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      else if (type === "NODE_OUTPUT" && component === "synthesize_node") {
+        targetTab = 'audit';
+        badgeStyle = 'badge-success';
+        logHtml = `
+          <div class="step-log-item">
+            <span class="step-log-time">${getFormattedTime()}</span>
+            <div class="step-log-content">
+              <span class="step-log-badge ${badgeStyle}">SYNTHESIS</span>
+              <strong>Synthesizing Final Context:</strong>
+              <div style="font-size:12px; color: var(--text-muted); margin-top:4px;">
+                Context successfully compiled. Synthesizing citations and drafting answers.
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      else {
+        // Fallback for standard steps
+        logHtml = `
+          <div class="step-log-item">
+            <span class="step-log-time">${getFormattedTime()}</span>
+            <div class="step-log-content">
+              <span class="step-log-badge ${badgeStyle}">${type}</span>
+              <strong>${component}</strong>: completed in ${duration}ms
+            </div>
+          </div>
+        `;
+      }
+
+      const logContainer = document.getElementById(`log_${targetTab}_${sessionId}`);
+      if (logContainer) {
+        logContainer.innerHTML += logHtml;
+        // Auto-switch tabs to display active logs in real-time
+        switchThoughtTab(sessionId, targetTab);
+      }
+    }
+
+    // Load full trace report from history
+    async function loadTraceReport(runId, query) {
+      activeRunId = runId;
+      loadHistory();
+      
+      const chatMessages = document.getElementById('chatMessages');
+      chatMessages.innerHTML = '';
+      
+      // Clear empty state
+      const emptyState = document.getElementById('emptyState');
+      if (emptyState) emptyState.remove();
+
+      // Show query
+      const userMsgDiv = document.createElement('div');
+      userMsgDiv.className = 'message user';
+      userMsgDiv.innerHTML = `
+        <div class="bubble">${query}</div>
+        <div class="avatar user"><i data-lucide="user" style="width: 18px; height: 18px;"></i></div>
+      `;
+      chatMessages.appendChild(userMsgDiv);
+
+      // Create history view placeholder
+      const sysMsgDiv = document.createElement('div');
+      sysMsgDiv.className = 'message system';
+      
+      const sessionId = "run_hist_" + runId;
+      
+      sysMsgDiv.innerHTML = `
+        <div class="avatar system"><i data-lucide="bot" style="width: 18px; height: 18px;"></i></div>
+        <div class="bubble">
+          <!-- Accordion -->
+          <div class="cognitive-accordion">
+            <div class="accordion-trigger" onclick="toggleAccordion('${sessionId}')">
+              <span class="accordion-title">
+                <i data-lucide="terminal" style="width: 14px; height: 14px; margin-right: 4px;"></i>
+                COGNITIVE PIPELINE (HISTORICAL)
+              </span>
+              <div class="accordion-status">
+                <span class="live-timer" id="timer_${sessionId}">COMPLETED</span>
+                <span id="dot_${sessionId}" class="pulsing-dot" style="background-color: var(--success); box-shadow: 0 0 10px var(--success);"></span>
+              </div>
+            </div>
+            
+            <div class="accordion-content open" id="content_${sessionId}">
+              <div class="thought-tabs">
+                <div class="thought-tab active" id="tab_understand_${sessionId}" onclick="switchThoughtTab('${sessionId}', 'understand')">Understanding</div>
+                <div class="thought-tab" id="tab_retrieve_${sessionId}" onclick="switchThoughtTab('${sessionId}', 'retrieve')">Retrieval</div>
+                <div class="thought-tab" id="tab_audit_${sessionId}" onclick="switchThoughtTab('${sessionId}', 'audit')">Audit & Search</div>
+              </div>
+              
+              <!-- Tab Panels -->
+              <div class="thought-panel active" id="panel_understand_${sessionId}">
+                <div class="timeline" id="log_understand_${sessionId}"></div>
+              </div>
+              
+              <div class="thought-panel" id="panel_retrieve_${sessionId}">
+                <div class="timeline" id="log_retrieve_${sessionId}"></div>
+              </div>
+              
+              <div class="thought-panel" id="panel_audit_${sessionId}">
+                <div class="timeline" id="log_audit_${sessionId}"></div>
+              </div>
+
+              <div class="thought-footer">
+                <button class="download-trace-btn" id="dl_btn_${sessionId}">
+                  <i data-lucide="download" style="width: 12px; height: 12px;"></i>
+                  Download JSON Trace
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Final text response -->
+          <div class="answer-text" id="answer_${sessionId}">
+            <span style="color: var(--text-dark); font-style: italic;">Loading compiled answer...</span>
+          </div>
+        </div>
+      `;
+      chatMessages.appendChild(sysMsgDiv);
+      lucide.createIcons();
+
+      try {
+        const response = await fetch(`/api/traces/${runId}`);
+        const traceReport = await response.json();
+        
+        // Render step logs
+        const traceLog = traceReport.trace_log || [];
+        traceLog.forEach(trace => {
+          renderTraceStep(sessionId, trace);
+        });
+
+        // Find synthesize final answer in trace logs or call the standard synthesis step
+        let finalAnswer = "No compiled response found in trace logs.";
+        // Check for node output of synthesis
+        const synthEvent = traceLog.find(t => t.component === "synthesize_node" || t.type === "SYNTHESIS");
+        
+        // Actually, we can fetch final answer or synthesize again, but wait, the trace log has the inputs.
+        // Let's show final trace outputs. Wait, we can get final answer from trace_report or database.
+        // In this implementation, let's load it from the database trace report if available.
+        // Let's check where the final answer is stored in the trace report.
+        // If we store the final answer in the meta, it is extremely easy!
+        // In our api.py, run_query does:
+        // `meta: { run_id, query, timestamp, final_answer }`
+        // Wait, did we save final answer to the report?
+        // Let's see: `recorder.run_data` was saved as-is. We can update `api.py` to save `final_answer` in the report data!
+        // For existing files, let's look at the traceLog and extract it if possible.
+        // Let's update `api.py` to add `final_answer` directly inside the saved trace file so we can read it back.
+        // Let's check if the response contains "final_answer" in the meta.
+        if (traceReport.meta && traceReport.meta.final_answer) {
+          finalAnswer = traceReport.meta.final_answer;
+        } else {
+          // Fallback search in trace log for synthesis details
+          const finalSynth = traceLog.filter(t => t.component === "synthesize_node");
+          if (finalSynth.length > 0) {
+            // Find if there is a way to get final_answer
+            finalAnswer = "Compiled successfully. Refer to Download JSON Trace for exact outputs.";
+          }
+        }
+        
+        document.getElementById(`answer_${sessionId}`).innerHTML = marked.parse(finalAnswer);
+        
+        document.getElementById(`dl_btn_${sessionId}`).onclick = () => window.open(`/api/traces/${runId}`, '_blank');
+        
+      } catch (e) {
+        console.error("Failed to load historical trace", e);
+        document.getElementById(`answer_${sessionId}`).innerHTML = `<span style="color: var(--error)">Failed to load trace report: ${e}</span>`;
+      }
+    }
+
+    // Check system diagnostics
+    async function checkHealth() {
+      try {
+        const response = await fetch('/api/health');
+        const data = await response.json();
+        const statusEl = document.getElementById('connectionStatus');
+        
+        if (data.status === 'healthy') {
+          statusEl.innerHTML = `
+            <div class="pulsing-dot" style="background-color: var(--success); box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);"></div>
+            Systems Active
+          `;
+          statusEl.style.color = 'var(--success)';
+        } else {
+          const details = data.details || {};
+          let issues = [];
+          if (details.neo4j?.status === 'inactive') issues.push('Neo4j');
+          if (details.faiss_nvidia?.status === 'inactive') issues.push('FAISS-Nvidia');
+          if (details.faiss_local?.status === 'inactive') issues.push('FAISS-Local');
+          
+          const keys = details.api_keys || {};
+          if (keys.nvidia === 'missing') issues.push('Nvidia-Key');
+          if (keys.tavily === 'missing') issues.push('Tavily-Key');
+          
+          statusEl.innerHTML = `
+            <div class="pulsing-dot" style="background-color: var(--error); box-shadow: 0 0 8px rgba(244, 63, 94, 0.4);"></div>
+            Degraded: Missing ${issues.join(', ')}
+          `;
+          statusEl.style.color = 'var(--error)';
+        }
+      } catch (e) {
+        const statusEl = document.getElementById('connectionStatus');
+        statusEl.innerHTML = `
+          <div class="pulsing-dot" style="background-color: var(--error); box-shadow: 0 0 8px rgba(244, 63, 94, 0.4);"></div>
+          Server Offline
+        `;
+        statusEl.style.color = 'var(--error)';
+      }
+    }
+
+    // Initial Loading
+    loadHistory();
+    checkHealth();
+    // Re-check system health every 30 seconds
+    setInterval(checkHealth, 30000);
+  </script>
+</body>
+</html>
